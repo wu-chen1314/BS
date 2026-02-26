@@ -1,0 +1,48 @@
+server:
+  port: 8080
+
+spring:
+  mail:
+      host: smtp.qq.com
+      username: 2084992154@qq.com      # 替换为你的真实QQ邮箱
+      password:  idjkyybewyxgdffi # 绝对不是QQ密码！是十几位的授权码
+      default-encoding: UTF-8
+      properties:
+        mail:
+          smtp:
+            auth: true
+            starttls:
+              enable: true
+              required: true
+            ssl:
+              enable: true
+  application:
+    name: ich-promotion-system
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    # ?? ??????????????????
+    url: jdbc:mysql://localhost:3306/ich_promotion_db?serverTimezone=Asia/Shanghai&useUnicode=true&characterEncoding=utf-8&useSSL=false
+    username: root
+    password: 12345678
+  servlet:
+    multipart:
+      max-file-size: 100MB
+      max-request-size: 100MB
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+  mapper-locations: classpath*:/mapper/**/*.xml
+
+redis:
+  host: 127.0.0.1
+  port: 6379
+  # password: 如果你的redis有密码请填这里，没有则留空或注释掉
+  database: 0
+  lettuce:
+    pool:
+      max-active: 8
+      max-wait: -1ms
+      max-idle: 8
+      min-idle: 0
