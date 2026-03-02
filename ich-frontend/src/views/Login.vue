@@ -236,12 +236,12 @@ const handleSubmit = async () => {
         try {
             // 注册请求将 code 挂在 URL 上作为 RequestParam
             const url = isLogin.value
-                ? 'http://localhost:8080/api/auth/login'
+                ? 'http://localhost:8080/api/login'
                 : `http://localhost:8080/api/auth/register?code=${form.code}`
 
             const payload = {
                 username: form.username,
-                passwordHash: form.passwordHash,
+                password: form.passwordHash,  // 登录时使用 password 字段
                 nickname: form.nickname,
                 email: form.email
             }
@@ -250,13 +250,47 @@ const handleSubmit = async () => {
 
             if (res.data.code === 200) {
                 ElMessage.success(isLogin.value ? '登录成功' : '注册成功并自动登录')
-                localStorage.setItem('user', JSON.stringify(res.data.data))
-                router.push('/')
+                
+                if (isLogin.value) {
+                    // 登录成功，存储用户信息和 Token
+                    const loginData = res.data.data
+                    // 将Token添加到用户对象中，便于request模块使用
+                    const userWithToken = {
+                        ...loginData.user,
+                        token: loginData.token
+                    }
+                    sessionStorage.setItem('user', JSON.stringify(userWithToken))
+                    sessionStorage.setItem('token', loginData.token)
+                    sessionStorage.setItem('tokenExpires', loginData.expiresIn)
+                } else {
+                    // 注册成功，存储用户信息
+                    sessionStorage.setItem('user', JSON.stringify(res.data.data))
+                }
+                
+                router.push('/home')
             } else {
                 ElMessage.error(res.data.msg || '操作失败')
             }
-        } catch (error) {
-            ElMessage.error('服务连接失败')
+        } catch (error: any) {
+            // 显示详细的错误信息
+            if (error.response) {
+                const status = error.response.status
+                const message = error.response.data?.msg || error.response.data?.message || '操作失败'
+                
+                if (status === 401) {
+                    ElMessage.error(message || '用户名或密码错误')
+                } else if (status === 403) {
+                    ElMessage.error('账户已被锁定，请稍后再试或联系管理员')
+                } else if (status === 429) {
+                    ElMessage.error('操作过于频繁，请稍后再试')
+                } else {
+                    ElMessage.error(message)
+                }
+            } else if (error.message === 'Network Error') {
+                ElMessage.error('网络连接失败，请检查网络后重试')
+            } else {
+                ElMessage.error('服务器响应超时，请稍后重试')
+            }
         } finally {
             loading.value = false
         }
@@ -357,10 +391,10 @@ const handleResetPassword = async () => {
     left: 0;
     width: 100%;
     height: 100%;
-    background-image: 
-        radial-gradient(circle at 20% 30%, rgba(200, 180, 150, 0.15) 0%, transparent 40%), 
-        radial-gradient(circle at 80% 70%, rgba(150, 120, 90, 0.1) 0%, transparent 40%), 
-        linear-gradient(45deg, rgba(180, 160, 130, 0.03) 25%, transparent 25%, transparent 75%, rgba(180, 160, 130, 0.03) 75%, rgba(180, 160, 130, 0.03)), 
+    background-image:
+        radial-gradient(circle at 20% 30%, rgba(200, 180, 150, 0.15) 0%, transparent 40%),
+        radial-gradient(circle at 80% 70%, rgba(150, 120, 90, 0.1) 0%, transparent 40%),
+        linear-gradient(45deg, rgba(180, 160, 130, 0.03) 25%, transparent 25%, transparent 75%, rgba(180, 160, 130, 0.03) 75%, rgba(180, 160, 130, 0.03)),
         linear-gradient(45deg, rgba(180, 160, 130, 0.03) 25%, transparent 25%, transparent 75%, rgba(180, 160, 130, 0.03) 75%, rgba(180, 160, 130, 0.03));
     background-size: 100% 100%, 100% 100%, 60px 60px, 60px 60px;
     background-position: 0 0, 0 0, 0 0, 30px 30px;
@@ -369,8 +403,13 @@ const handleResetPassword = async () => {
 }
 
 @keyframes bgGradient {
-    0% { transform: scale(1); }
-    100% { transform: scale(1.05); }
+    0% {
+        transform: scale(1);
+    }
+
+    100% {
+        transform: scale(1.05);
+    }
 }
 
 .login-card-wrapper {
@@ -394,7 +433,7 @@ const handleResetPassword = async () => {
     border: 1px solid rgba(255, 255, 255, 0.6) !important;
     border-radius: 24px !important;
     overflow: hidden;
-    box-shadow: 0 40px 80px -20px rgba(90, 64, 48, 0.25), 0 0 40px rgba(255,255,255,0.5) inset !important;
+    box-shadow: 0 40px 80px -20px rgba(90, 64, 48, 0.25), 0 0 40px rgba(255, 255, 255, 0.5) inset !important;
     background: rgba(255, 250, 242, 0.9) !important;
     backdrop-filter: blur(20px) saturate(1.2);
 }
@@ -432,8 +471,13 @@ const handleResetPassword = async () => {
 }
 
 @keyframes drift {
-    0% { transform: translate(0, 0); }
-    100% { transform: translate(-50%, -50%); }
+    0% {
+        transform: translate(0, 0);
+    }
+
+    100% {
+        transform: translate(-50%, -50%);
+    }
 }
 
 .brand-content {
@@ -446,7 +490,9 @@ const handleResetPassword = async () => {
 }
 
 @keyframes fadeIn {
-    to { opacity: 1; }
+    to {
+        opacity: 1;
+    }
 }
 
 .seal {
@@ -652,7 +698,7 @@ const handleResetPassword = async () => {
     left: -100%;
     width: 50%;
     height: 100%;
-    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
     transform: skewX(-20deg);
     transition: 0.5s;
 }
@@ -689,18 +735,22 @@ const handleResetPassword = async () => {
         width: 100%;
         max-width: 500px;
     }
+
     .card-inner {
         flex-direction: column;
         min-height: auto;
     }
+
     .brand-side {
         padding: 48px 32px;
         min-height: 240px;
         flex: auto;
     }
+
     .form-side {
         padding: 48px 32px;
     }
+
     .brand-content h1 {
         font-size: 36px;
     }

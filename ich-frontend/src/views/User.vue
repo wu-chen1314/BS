@@ -81,6 +81,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import axios from 'axios'
+import request from '@/utils/request'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 // 状态变量
@@ -104,9 +105,9 @@ const form = reactive({
     status: 1
 })
 
-// 初始化：获取当前用户信息
+// 初始化
 onMounted(() => {
-    const str = localStorage.getItem('user')
+    const str = sessionStorage.getItem('user')
     if (str) {
         currentUser.value = JSON.parse(str)
     }
@@ -117,7 +118,7 @@ onMounted(() => {
 const fetchData = async () => {
     loading.value = true // 开始加载
     try {
-        const res = await axios.get('http://localhost:8080/api/users/page', {
+        const res = await request.get('/users/page', {
             params: {
                 pageNum: currentPage.value,
                 pageSize: pageSize.value,
@@ -188,7 +189,7 @@ const handleDelete = (id: number) => {
     ElMessageBox.confirm('确定删除该用户吗？', '警告', { type: 'warning' })
         .then(async () => {
             try {
-                await axios.delete(`http://localhost:8080/api/users/delete/${id}`)
+                await request.delete(`/users/delete/${id}`)
                 ElMessage.success('删除成功')
                 fetchData()
             } catch (error) {
@@ -200,7 +201,7 @@ const handleDelete = (id: number) => {
 // 重置密码
 const handleResetPwd = (id: number) => {
     ElMessageBox.confirm('确定将密码重置为 123456 吗？', '警告', { type: 'warning' }).then(async () => {
-        await axios.put(`http://localhost:8080/api/users/reset-password/${id}`)
+        await request.put(`/users/reset-password/${id}`)
         ElMessage.success('重置成功，新密码：123456')
     })
 }

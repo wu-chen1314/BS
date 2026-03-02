@@ -21,10 +21,62 @@
             </el-col>
         </el-row>
 
+        <!-- ✨ 新增：通知公告区 -->
+        <el-row :gutter="24" class="news-row" style="margin-bottom: 24px;">
+            <el-col :span="24">
+                <el-card shadow="hover" class="premium-card news-card">
+                    <div class="chart-header">
+                        <span class="chart-title"><el-icon>
+                                <Bell />
+                            </el-icon> 动态公告</span>
+                        <div class="chart-decoration"></div>
+                    </div>
+                    <div class="news-list">
+                        <div class="news-item">
+                            <span class="news-tag new">NEW</span>
+                            <span class="news-text">国家级非物质文化遗产生产性保护示范基地名单公示</span>
+                            <span class="news-date">03-01</span>
+                        </div>
+                        <div class="news-item">
+                            <span class="news-tag">荐</span>
+                            <span class="news-text">"非遗进校园"优秀实践案例征集活动启动</span>
+                            <span class="news-date">02-28</span>
+                        </div>
+                        <div class="news-item">
+                            <span class="news-tag">告</span>
+                            <span class="news-text">关于加强传统技艺类非遗项目版权保护的通知</span>
+                            <span class="news-date">02-25</span>
+                        </div>
+                    </div>
+                </el-card>
+            </el-col>
+        </el-row>
+
         <div class="premium-toolbar">
             <div class="search-group">
-                <el-input v-model="searchName" placeholder="输入非遗项目名称..." class="rounded-input" size="large" clearable
-                    @clear="fetchData" @keyup.enter="handleSearch" :prefix-icon="Search" />
+                <div class="search-input-container">
+                    <el-input v-model="searchName" placeholder="输入非遗项目名称..." class="rounded-input" size="large"
+                        clearable @clear="fetchData" @keyup.enter="handleSearch" :prefix-icon="Search"
+                        @focus="showSearchHistory = true" @blur="() => hideSearchHistory()" />
+
+                    <!-- 搜索历史下拉菜单 -->
+                    <div v-if="showSearchHistory && searchHistory.length > 0 && userInfo.id"
+                        class="search-history-dropdown">
+                        <div class="search-history-header">
+                            <span>搜索历史</span>
+                            <el-button link type="primary" size="small" @click.stop="clearSearchHistory">清空</el-button>
+                        </div>
+                        <div class="search-history-list">
+                            <div v-for="(keyword, index) in searchHistory" :key="index" class="search-history-item"
+                                @click.stop="selectSearchHistory(keyword)">
+                                <el-icon class="history-icon">
+                                    <Clock />
+                                </el-icon>
+                                <span>{{ keyword }}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
                 <el-select v-model="searchLevel" placeholder="筛选保护级别" size="large" clearable @clear="fetchData"
                     class="rounded-select">
                     <el-option label="国家级" value="国家级" />
@@ -104,13 +156,37 @@
                             </div>
 
                             <div class="card-footer">
-                                <div class="inheritor-info">
+                                <div class="inheritor-info" @click="handleInheritorClick(item.id)">
                                     <span class="label">传承人:</span>
-                                    <span class="value">{{ item.inheritorNames || '暂无记录' }}</span>
+                                    <span class="value"
+                                        :class="{ 'clickable': item.inheritorNames && item.inheritorNames !== '暂无记录' }">{{
+                                            item.inheritorNames || '暂无记录' }}</span>
+                                    <el-icon v-if="item.inheritorNames && item.inheritorNames !== '暂无记录'"
+                                        class="inheritor-link-icon">
+                                        <Link />
+                                    </el-icon>
                                 </div>
-                                <div class="admin-btns" v-if="userInfo.role === 'admin'" @click.stop>
-                                    <el-button link type="primary" @click="handleEdit(item)">编辑</el-button>
-                                    <el-button link type="danger" @click="handleDelete(item.id)">删除</el-button>
+                                <div class="card-stats">
+                                    <span class="view-count">
+                                        <el-icon size="14">
+                                            <View />
+                                        </el-icon>
+                                        {{ item.viewCount || 0 }}
+                                    </span>
+                                </div>
+                                <div class="card-actions">
+                                    <el-button v-if="userInfo.role !== 'admin'"
+                                        :type="favoritedProjects.includes(item.id) ? 'warning' : ''" circle size="small"
+                                        @click.stop="toggleCardFavorite(item.id)" class="favorite-btn">
+                                        <el-icon>
+                                            <StarFilled v-if="favoritedProjects.includes(item.id)" />
+                                            <Star v-else />
+                                        </el-icon>
+                                    </el-button>
+                                    <div class="admin-btns" v-if="userInfo.role === 'admin'" @click.stop>
+                                        <el-button link type="primary" @click="handleEdit(item)">编辑</el-button>
+                                        <el-button link type="danger" @click="handleDelete(item.id)">删除</el-button>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -236,8 +312,7 @@
                     <div class="comment-list">
                         <div v-if="commentList.length === 0" class="empty-comment">暂无留言，写下您的文化初体验吧~</div>
                         <div v-for="item in commentList" :key="item.id" class="comment-item">
-                            <el-avatar :size="36"
-                                :src="item.avatarUrl || 'https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png'" />
+                            <el-avatar :size="36" :src="getAvatarUrl(item.avatarUrl)" />
                             <div class="comment-content">
                                 <div class="comment-header">
                                     <span class="nickname">{{ item.nickname || '匿名文化使者' }}</span>
@@ -278,18 +353,24 @@
 <script setup lang="ts">
 // ✨ 注意：引入了 onUnmounted 和 ElNotification
 import { ref, reactive, onMounted, onUnmounted, nextTick } from 'vue'
-import { Plus, Search, Download, Star, StarFilled, ChatLineRound, VideoPlay, Delete } from '@element-plus/icons-vue'
+import { useRoute, useRouter } from 'vue-router'
+import { Plus, Search, Download, Star, StarFilled, ChatLineRound, VideoPlay, Delete, Clock, View, Link, TrendCharts, Bell, Top, ArrowRight } from '@element-plus/icons-vue'
 import axios from 'axios'
+import request from '@/utils/request'
 import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
 import type { UploadProps } from 'element-plus'
 import * as echarts from 'echarts'
 import { Quill } from '@vueup/vue-quill'
 
+// 路由
+const route = useRoute()
+const router = useRouter()
+
 // --- 状态定义 ---
 const userInfo = ref<any>({})
 const tableData = ref<any[]>([])
 const total = ref(0)
-const pageSize = ref(12)
+const pageSize = ref(8)
 const currentPage = ref(1)
 const loading = ref(false)
 const dialogVisible = ref(false)
@@ -299,8 +380,17 @@ const btnLoading = ref(false)
 const multipleSelection = ref<number[]>([])
 
 const isFavorited = ref(false)
+const favoritedProjects = ref<number[]>([])
 const commentList = ref<any[]>([])
 const newComment = ref('')
+
+// 搜索历史相关
+const searchHistory = ref<string[]>([])
+const showSearchHistory = ref(false)
+
+// 浏览量相关
+const viewCounts = ref<Record<number, number>>({})
+const hideSearchHistory = () => { setTimeout(() => showSearchHistory.value = false, 200) } // ✨ 修复：setTimeout 访问问题
 
 const quillRef = ref()
 const toolbarOptions = [
@@ -373,7 +463,7 @@ const initWebSocket = () => {
 const fetchData = async () => {
     loading.value = true
     try {
-        const res = await axios.get('http://localhost:8080/api/projects/page', {
+        const res = await request.get('/projects/page', {
             params: {
                 pageNum: currentPage.value,
                 pageSize: pageSize.value,
@@ -382,14 +472,44 @@ const fetchData = async () => {
             }
         })
         if (res.data.code === 200) {
-            tableData.value = res.data.data.records.map((item: any) => ({
+            const records = res.data.data.records
+
+            // 为每个项目获取传承人信息
+            for (const item of records) {
+                try {
+                    // 使用现有的传承人分页接口，通过projectId过滤
+                    const inheritorRes = await request.get('/inheritors/page', {
+                        params: { projectId: item.id, pageNum: 1, pageSize: 100 }
+                    })
+                    if (inheritorRes.data.code === 200 && inheritorRes.data.data && inheritorRes.data.data.records) {
+                        // 将传承人姓名拼接成字符串
+                        const inheritorNames = inheritorRes.data.data.records.map((inheritor: any) => inheritor.name).join('、')
+                        item.inheritorNames = inheritorNames || '暂无记录'
+                    } else {
+                        item.inheritorNames = '暂无记录'
+                    }
+                } catch (error) {
+                    console.error(`获取项目 ${item.id} 的传承人信息失败`, error)
+                    item.inheritorNames = '暂无记录'
+                }
+            }
+
+            tableData.value = records.map((item: any) => ({
                 ...item, selected: false
             }))
             total.value = res.data.data.total
             multipleSelection.value = []
+        } else {
+            // 处理API返回错误
+            ElMessage.error(res.data.msg || '获取项目列表失败')
+            tableData.value = []
+            total.value = 0
         }
     } catch (error) {
-        ElMessage.error('服务连接异常')
+        console.error('获取项目列表失败', error)
+        ElMessage.error('获取项目列表失败，请稍后重试')
+        tableData.value = []
+        total.value = 0
     } finally {
         loading.value = false
     }
@@ -398,24 +518,105 @@ const fetchData = async () => {
 // 互动功能
 const checkFavoriteStatus = async (projectId: number) => {
     if (!userInfo.value.id) return
-    const res = await axios.get('http://localhost:8080/api/favorites/check', { params: { userId: userInfo.value.id, projectId } })
+    const res = await request.get('/favorites/check', { params: { userId: userInfo.value.id, projectId } })
     isFavorited.value = res.data.data
 }
 
 const toggleFavorite = async () => {
-    const res = await axios.post('http://localhost:8080/api/favorites/toggle', { userId: userInfo.value.id, projectId: form.id })
+    const res = await request.post('/favorites/toggle', { userId: userInfo.value.id, projectId: form.id })
     isFavorited.value = res.data.data
     isFavorited.value ? ElMessage.success('已加入您的雅集收藏') : ElMessage.info('已移出收藏')
+    // 更新收藏项目列表
+    await loadFavoritedProjects()
+}
+
+// 加载用户收藏的项目ID列表
+const loadFavoritedProjects = async () => {
+    if (!userInfo.value.id) return
+    try {
+        const res = await request.get('/favorites/list', {
+            params: { userId: userInfo.value.id, pageNum: 1, pageSize: 100 }
+        })
+        if (res.data.code === 200) {
+            favoritedProjects.value = res.data.data.records.map((item: any) => item.id)
+        }
+    } catch (error) {
+        console.error('加载收藏项目失败', error)
+    }
+}
+
+// 切换卡片上的收藏状态
+const toggleCardFavorite = async (projectId: number) => {
+    if (!userInfo.value.id) return ElMessage.warning('请先登录')
+    const res = await request.post('/favorites/toggle', { userId: userInfo.value.id, projectId })
+    const isFav = res.data.data
+    isFav ? ElMessage.success('已加入您的雅集收藏') : ElMessage.info('已移出收藏')
+    // 更新收藏项目列表
+    await loadFavoritedProjects()
+}
+
+// 搜索历史相关方法
+const loadSearchHistory = async () => {
+    if (!userInfo.value.id) return
+    try {
+        const res = await request.get('/search/history', {
+            params: { userId: userInfo.value.id }
+        })
+        if (res.data.code === 200) {
+            searchHistory.value = res.data.data
+        }
+    } catch (error) {
+        console.error('加载搜索历史失败', error)
+    }
+}
+
+const clearSearchHistory = async () => {
+    if (!userInfo.value.id) return
+    try {
+        const res = await request.delete('/search/history', {
+            params: { userId: userInfo.value.id }
+        })
+        if (res.data.code === 200) {
+            searchHistory.value = []
+            ElMessage.success('搜索历史已清空')
+        }
+    } catch (error) {
+        console.error('清空搜索历史失败', error)
+        ElMessage.error('清空搜索历史失败')
+    }
+}
+
+const selectSearchHistory = (keyword: string) => {
+    searchName.value = keyword
+    showSearchHistory.value = false
+    handleSearch()
+}
+
+// 浏览量相关方法
+const increaseViewCount = async (projectId: number) => {
+    try {
+        const res = await request.get('/view/count', {
+            params: { projectId }
+        })
+        if (res.data.code === 200) {
+            viewCounts.value[projectId] = res.data.data
+            // ✨ 浏览成功后，同步更新到列表对象中
+            const item = tableData.value.find(p => p.id === projectId)
+            if (item) item.viewCount = res.data.data
+        }
+    } catch (error) {
+        console.error('增加浏览量失败', error)
+    }
 }
 
 const fetchComments = async (projectId: number) => {
-    const res = await axios.get('http://localhost:8080/api/comments/list', { params: { projectId } })
+    const res = await request.get('/comments/list', { params: { projectId } })
     commentList.value = res.data.data
 }
 
 const submitComment = async () => {
     if (!newComment.value.trim()) return ElMessage.warning('内容不能为空')
-    await axios.post('http://localhost:8080/api/comments/add', { projectId: form.id, userId: userInfo.value.id, content: newComment.value })
+    await request.post('/comments/add', { projectId: form.id, userId: userInfo.value.id, content: newComment.value })
     ElMessage.success('留言成功')
     newComment.value = ''
     fetchComments(form.id!)
@@ -423,7 +624,7 @@ const submitComment = async () => {
 
 const handleDeleteComment = (commentId: number) => {
     ElMessageBox.confirm('是否撤回该条留言？', '确认操作', { type: 'warning' }).then(async () => {
-        const res = await axios.delete(`http://localhost:8080/api/comments/delete/${commentId}`)
+        const res = await request.delete(`/comments/delete/${commentId}`)
         if (res.data.code === 200) { ElMessage.success('撤回成功'); if (form.id) fetchComments(form.id) }
     }).catch(() => { })
 }
@@ -437,7 +638,11 @@ const openAddDialog = () => {
 const handleEdit = (row: any) => {
     Object.assign(form, row)
     dialogVisible.value = true
-    if (row.id) { checkFavoriteStatus(row.id); fetchComments(row.id); }
+    if (row.id) {
+        checkFavoriteStatus(row.id)
+        fetchComments(row.id)
+        increaseViewCount(row.id)
+    }
 }
 
 const saveProject = async () => {
@@ -464,7 +669,7 @@ const handleBatchDelete = () => {
     if (multipleSelection.value.length === 0) return
     ElMessageBox.confirm(`将永久移除选中的 ${multipleSelection.value.length} 个项目，是否继续？`, '核心警告', { type: 'error' })
         .then(async () => {
-            const res = await axios.delete('http://localhost:8080/api/projects/delete/batch', { data: multipleSelection.value })
+            const res = await request.delete('/projects/delete/batch', { data: multipleSelection.value })
             if (res.data.code === 200) { ElMessage.success('档案已清理'); fetchData(); initCharts() }
         })
 }
@@ -472,7 +677,7 @@ const handleBatchDelete = () => {
 const handleDelete = (id: number) => {
     ElMessageBox.confirm('此操作不可逆，确认移除该项目吗？', '警告', { type: 'error' })
         .then(async () => {
-            const res = await axios.delete(`http://localhost:8080/api/projects/delete/${id}`)
+            const res = await request.delete(`/projects/delete/${id}`)
             if (res.data.code === 200) { ElMessage.success('已移除'); fetchData(); initCharts() }
         })
 }
@@ -492,7 +697,7 @@ const uploadQuillImage = async (e: any) => {
     const file = e.target.files[0]; if (!file) return
     const formData = new FormData(); formData.append('file', file)
     try {
-        const res = await axios.post('http://localhost:8080/api/file/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
+        const res = await request.post('/file/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
         if (res.data.code === 200) {
             const quill = quillRef.value.getQuill(); const range = quill.getSelection(true)
             quill.insertEmbed(range.index, 'image', res.data.data); quill.setSelection(range.index + 1)
@@ -501,12 +706,48 @@ const uploadQuillImage = async (e: any) => {
 }
 
 // 其他工具方法
-const handleSearch = () => { currentPage.value = 1; fetchData() }
+// 搜索功能
+const handleSearch = async () => {
+    currentPage.value = 1
+
+    // 记录搜索词
+    if (searchName.value.trim() && userInfo.value.id) {
+        try {
+            await request.post('/search/record', {
+                userId: userInfo.value.id,
+                keyword: searchName.value.trim()
+            })
+            // 重新加载搜索历史
+            await loadSearchHistory()
+        } catch (error) {
+            console.error('记录搜索词失败', error)
+        }
+    }
+
+    fetchData()
+}
 const handlePageChange = (val: number) => { currentPage.value = val; fetchData() }
+
+// 点击传承人跳转到传承人管理页面
+const handleInheritorClick = (projectId: number) => {
+    // 跳转到传承人管理页面，并传递项目ID作为参数
+    router.push({
+        path: '/inheritor',
+        query: { projectId: projectId }
+    })
+}
+
 const getLevelClass = (level: string) => {
     const map: any = { '国家级': 'level-national', '省级': 'level-provincial', '市级': 'level-city', '县级': 'level-county' }
     return map[level] || 'level-county'
 }
+// 处理头像URL，确保相对路径也能正确显示 (✨ 修复：显式指定类型)
+const getAvatarUrl = (avatarUrl: string | null) => {
+    if (avatarUrl) {
+        return avatarUrl.startsWith('http') ? avatarUrl : `http://localhost:8080${avatarUrl}`;
+    }
+    return 'https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png';
+};
 const handleExport = () => { window.open('http://localhost:8080/api/projects/export') }
 
 // --- 高级质感 ECharts 初始化 ---
@@ -521,7 +762,7 @@ const initCharts = async () => {
         echarts.getInstanceByDom(pieChartDom)?.dispose()
         const myPieChart = echarts.init(pieChartDom)
         try {
-            const res = await axios.get('http://localhost:8080/api/statistics/level')
+            const res = await request.get('/statistics/level')
             if (res.data.code === 200) {
                 myPieChart.setOption({
                     color: heritageColors,
@@ -546,7 +787,7 @@ const initCharts = async () => {
         echarts.getInstanceByDom(barChartDom)?.dispose()
         const myBarChart = echarts.init(barChartDom)
         try {
-            const res = await axios.get('http://localhost:8080/api/statistics/status')
+            const res = await request.get('/statistics/status')
             if (res.data.code === 200) {
                 const rawData = res.data.data
                 const xData = rawData.map((item: any) => item.name)
@@ -584,21 +825,41 @@ const initCharts = async () => {
 
 // 窗口自适应
 window.addEventListener('resize', () => {
-    echarts.getInstanceByDom(document.getElementById('pieChart') as HTMLElement)?.resize()
-    echarts.getInstanceByDom(document.getElementById('barChart') as HTMLElement)?.resize()
+    const pieChart = document.getElementById('pieChart')
+    const barChart = document.getElementById('barChart')
+    if (pieChart) {
+        echarts.getInstanceByDom(pieChart as HTMLElement)?.resize()
+    }
+    if (barChart) {
+        echarts.getInstanceByDom(barChart as HTMLElement)?.resize()
+    }
 })
 
 // ================== 生命周期钩子 ==================
 onMounted(() => {
-    const userStr = localStorage.getItem('user')
+    const userStr = sessionStorage.getItem('user')
     if (userStr) userInfo.value = JSON.parse(userStr)
+
+    // 初始化 WebSocket 实时同步
+    initWebSocket()
 
     // 获取初始数据
     fetchData()
     initCharts()
+    loadFavoritedProjects()
+    loadSearchHistory()
 
-    // ✨ 开启 WebSocket 监听，戴上“接收器”！
-    initWebSocket()
+    // 处理路由参数，从热度排行榜页面跳转过来时打开对应项目
+    if (route.query.id) {
+        const projectId = parseInt(route.query.id as string)
+        // 查找对应项目并打开详情
+        setTimeout(() => {
+            const project = tableData.value.find(item => item.id === projectId)
+            if (project) {
+                handleEdit(project)
+            }
+        }, 500)
+    }
 })
 
 onUnmounted(() => {
@@ -747,9 +1008,264 @@ const getCategoryName = (id: number) => {
     box-shadow: 0 4px 12px rgba(196, 30, 58, 0.4);
 }
 
+/* ================= 搜索历史样式 ================= */
+.search-input-container {
+    position: relative;
+    flex: 1;
+    min-width: 300px;
+}
+
+.search-history-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: #fff;
+    border: 1px solid #e4e7ed;
+    border-radius: 0 0 8px 8px;
+    box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+    z-index: 1000;
+    margin-top: 4px;
+}
+
+.search-history-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    border-bottom: 1px solid #f0f0f0;
+    font-size: 14px;
+    color: #606266;
+}
+
+.search-history-list {
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.search-history-item {
+    display: flex;
+    align-items: center;
+    padding: 10px 16px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.search-history-item:hover {
+    background-color: #f5f7fa;
+}
+
+.history-icon {
+    margin-right: 8px;
+    color: #909399;
+    font-size: 14px;
+}
+
+/* ================= 浏览量样式 ================= */
+.card-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    padding: 12px 16px;
+    border-top: 1px solid #f0f0f0;
+}
+
+.inheritor-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.card-stats {
+    flex: 0 0 auto;
+    padding: 0 12px;
+}
+
+.card-actions {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: flex-end;
+    gap: 4px;
+}
+
+.admin-btns {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 2px;
+}
+
+.admin-btns .el-button {
+    padding: 2px 4px;
+    font-size: 12px;
+    line-height: 1.2;
+}
+
+.view-count {
+    display: flex;
+    align-items: center;
+    font-size: 12px;
+    color: #909399;
+}
+
+.view-count .el-icon {
+    margin-right: 4px;
+}
+
 .admin-actions {
     display: flex;
     gap: 12px;
+}
+
+/* ================= 热度排行样式 ================= */
+.hot-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.hot-item {
+    display: flex;
+    align-items: center;
+    padding: 10px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.hot-item:hover {
+    background: #fdf2f2;
+    transform: translateX(4px);
+}
+
+.hot-rank {
+    width: 24px;
+    height: 24px;
+    line-height: 24px;
+    text-align: center;
+    border-radius: 4px;
+    font-weight: bold;
+    font-size: 14px;
+    margin-right: 12px;
+    background: #f0f2f5;
+    color: #909399;
+}
+
+.rank-1 {
+    background: #ff4d4f;
+    color: #fff;
+}
+
+.rank-2 {
+    background: #ffa940;
+    color: #fff;
+}
+
+.rank-3 {
+    background: #ffec3d;
+    color: #333;
+}
+
+.hot-thumb {
+    width: 48px;
+    height: 48px;
+    border-radius: 4px;
+    margin-right: 12px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.hot-more {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-top: 16px;
+    padding: 8px 0;
+    border-top: 1px solid #f0f0f0;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.hot-more:hover {
+    color: #dc2626;
+}
+
+.hot-more span {
+    margin-right: 4px;
+    font-size: 14px;
+}
+
+.hot-more-icon {
+    font-size: 14px;
+    transition: transform 0.3s ease;
+}
+
+.hot-more:hover .hot-more-icon {
+    transform: translateX(4px);
+}
+
+.hot-info {
+    flex: 1;
+}
+
+.hot-name {
+    font-weight: 500;
+    color: #2c3e50;
+    font-size: 14px;
+    margin-bottom: 4px;
+}
+
+.hot-views {
+    font-size: 12px;
+    color: #909399;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.news-list {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.news-item {
+    display: flex;
+    align-items: center;
+    font-size: 14px;
+    color: #606266;
+    padding: 4px 0;
+    cursor: pointer;
+}
+
+.news-item:hover .news-text {
+    color: var(--brand-red);
+}
+
+.news-tag {
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    margin-right: 10px;
+    background: #f0f2f5;
+    color: #909399;
+}
+
+.news-tag.new {
+    background: #fff1f0;
+    color: #ff4d4f;
+    border: 1px solid #ffccc7;
+}
+
+.news-text {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.news-date {
+    color: #999;
+    font-size: 12px;
+    margin-left: 10px;
 }
 
 /* ================= 展馆卡片区 ================= */
@@ -912,6 +1428,43 @@ const getCategoryName = (id: number) => {
     font-weight: 500;
 }
 
+.inheritor-info .value.clickable {
+    color: #409EFF;
+    cursor: pointer;
+    text-decoration: underline;
+    transition: all 0.3s ease;
+}
+
+.inheritor-info .value.clickable:hover {
+    color: #67C23A;
+    text-decoration: none;
+}
+
+.inheritor-link-icon {
+    margin-left: 4px;
+    color: #409EFF;
+    font-size: 12px;
+    transition: all 0.3s ease;
+}
+
+.inheritor-info:hover .inheritor-link-icon {
+    color: #67C23A;
+    transform: translateX(2px);
+}
+
+.inheritor-info {
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    transition: all 0.3s ease;
+    padding: 4px 8px;
+    border-radius: 4px;
+}
+
+.inheritor-info:hover {
+    background-color: rgba(64, 158, 255, 0.1);
+}
+
 .admin-checkbox {
     position: absolute;
     top: 12px;
@@ -940,6 +1493,45 @@ const getCategoryName = (id: number) => {
     border-radius: 6px;
     background: #fff;
     border: 1px solid #e4e7ed;
+}
+
+/* ================= 统计卡片样式 ================= */
+.stat-card .stat-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+.stat-card .stat-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: #303133;
+}
+
+.stat-card .stat-decoration {
+    width: 20px;
+    height: 4px;
+    background: linear-gradient(90deg, #409EFF, #67C23A);
+    border-radius: 2px;
+}
+
+.stat-card .stat-content {
+    text-align: center;
+    padding: 20px 0;
+}
+
+.stat-card .stat-number {
+    font-size: 36px;
+    font-weight: 700;
+    color: #c41e3a;
+    line-height: 1;
+    margin-bottom: 8px;
+}
+
+.stat-card .stat-label {
+    font-size: 14px;
+    color: #909399;
 }
 
 /* ================= 弹窗美化 ================= */

@@ -6,7 +6,29 @@ import lombok.Data;
 public class Result<T> {
     private Integer code; // 200成功，500失败
     private String msg;   // 提示信息
-    private T data;       // 数据内容
+    private T data;
+
+    public Integer getCode() {
+        return code;
+    }
+    public void setCode(Integer code) {
+        this.code = code;
+    }
+
+    public String getMsg() {
+        return msg;
+    }
+    public void setMsg(String msg) {
+        this.msg = msg;
+    }
+
+    public T getData() {
+        return data;
+    }
+    public void setData(T data) {
+        this.data = data;
+    }
+       // 数据内容
 
     // 成功时的构造方法
     public static <T> Result<T> success(T data) {

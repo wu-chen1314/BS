@@ -1,4 +1,4 @@
-<template>
+﻿<template>
     <div class="chat-container">
         <el-button class="chat-fab" type="primary" circle size="large" @click="toggleChat">
             <el-icon size="24">
@@ -31,8 +31,7 @@
                 <div class="message-list" ref="messageListRef">
                     <div v-for="(msg, index) in messages" :key="index" class="message-item"
                         :class="msg.role === 'user' ? 'message-user' : 'message-ai'">
-                        <el-avatar :size="30"
-                            :src="msg.role === 'user' ? (userInfo.avatarUrl || 'https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png') : aiAvatar"
+                        <el-avatar :size="30" :src="msg.role === 'user' ? getUserAvatar : aiAvatar"
                             class="msg-avatar" />
 
                         <div class="msg-bubble">
@@ -76,11 +75,19 @@ const isLoading = ref(false)
 const messageListRef = ref<HTMLElement | null>(null)
 const aiAvatar = 'https://cdn-icons-png.flaticon.com/512/4712/4712027.png' // AI 头像
 
-// 从 localStorage 获取当前用户信息
+// 从 sessionStorage 获取当前用户信息
 const userInfo = computed(() => {
-    const userStr = localStorage.getItem('user')
+    const userStr = sessionStorage.getItem('user')
     return userStr ? JSON.parse(userStr) : {}
 })
+
+// 计算头像URL，确保相对路径也能正确显示
+const getUserAvatar = computed(() => {
+    if (userInfo.value.avatarUrl) {
+        return userInfo.value.avatarUrl.startsWith('http') ? userInfo.value.avatarUrl : `http://localhost:8080${userInfo.value.avatarUrl}`;
+    }
+    return 'https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png';
+});
 
 // 消息列表结构：role = 'user' | 'ai'
 interface ChatMessage {
@@ -125,15 +132,18 @@ const sendMessage = async () => {
 
     try {
         // ✨✨ 真实对接后端时，请解开这段注释 ✨✨
-        
-        const res = await axios.post('http://localhost:8080/api/chat/send', {
-          message: text,
-          userId: userInfo.value.id
-        })
-        const aiReply = res.data.data
-        
 
-      
+        const res = await axios.post('http://localhost:8080/api/chat/send', {
+            message: text,
+            userId: userInfo.value.id
+        })
+        
+        let aiReply = ''
+        if (res.data.code === 200 && res.data.data) {
+            aiReply = res.data.data.reply || JSON.stringify(res.data.data)
+        } else {
+            aiReply = res.data.msg || '抱歉，我好像断网了，请稍后再试。'
+        }
 
         // 2. 添加 AI 回复
         messages.value.push({ role: 'ai', content: aiReply })

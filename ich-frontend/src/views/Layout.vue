@@ -2,26 +2,49 @@
     <div class="layout-container">
         <div class="layout-sidebar" :class="{ 'collapsed': isCollapse }">
             <div class="logo">
-                <img src="https://element-plus.org/images/element-plus-logo.svg" alt="logo" />
-                <span v-if="!isCollapse">非遗推广系统</span>
+                <div class="logo-icon">
+                    <span class="logo-chinese">非</span>
+                </div>
+                <span v-if="!isCollapse" class="logo-text">非遗推广系统</span>
             </div>
             <el-menu active-text-color="#ffd04b" background-color="#304156" text-color="#fff"
-                :default-active="activeMenu" router class="el-menu-vertical" :collapse="isCollapse">
-                <el-menu-item index="/home">
+                :default-active="activeMenu" class="el-menu-vertical" :collapse="isCollapse" @select="handleMenuSelect">
+                <el-menu-item index="home">
                     <el-icon>
                         <DataLine />
                     </el-icon>
                     <span>{{ userInfo.role === 'admin' ? '非遗项目管理' : '非遗数字展馆' }}</span>
                 </el-menu-item>
 
-                <el-menu-item index="/inheritor"v-if="userInfo.role === 'admin'">
+                <el-menu-item index="favorites" v-if="userInfo.role !== 'admin'">
+                    <el-icon>
+                        <Star />
+                    </el-icon>
+                    <span>我的收藏</span>
+                </el-menu-item>
+
+                <el-menu-item index="hot-ranking">
+                    <el-icon>
+                        <TrendCharts />
+                    </el-icon>
+                    <span>热度排行</span>
+                </el-menu-item>
+
+                <el-menu-item index="chat">
+                    <el-icon>
+                        <ChatLineRound />
+                    </el-icon>
+                    <span>AI 聊天</span>
+                </el-menu-item>
+
+                <el-menu-item index="inheritor" v-if="userInfo.role === 'admin'">
                     <el-icon>
                         <User />
                     </el-icon>
                     <span>传承人管理</span>
                 </el-menu-item>
 
-                <el-menu-item index="/user" v-if="userInfo.role === 'admin'">
+                <el-menu-item index="user" v-if="userInfo.role === 'admin'">
                     <el-icon>
                         <Setting />
                     </el-icon>
@@ -59,10 +82,9 @@
 
                     <el-dropdown @command="handleCommand">
                         <div style="display: flex; align-items: center; cursor: pointer; outline: none;">
-                            <el-avatar :size="30"
-                                :src="userInfo.avatarUrl || 'https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png'" />
+                            <el-avatar :size="30" :src="getAvatarUrl" />
                             <span style="margin-left: 8px; margin-right: 5px;">{{ userInfo.nickname || userInfo.username
-                                }}</span>
+                            }}</span>
                             <el-tag size="small" effect="dark" :type="userInfo.role === 'admin' ? 'danger' : 'success'">
                                 {{ userInfo.role === 'admin' ? '管理员' : '普通用户' }}
                             </el-tag>
@@ -84,13 +106,13 @@
                 <router-view />
             </div>
         </div>
-        </div>
+    </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { DataLine, User, Fold, Expand, ArrowDown, Setting, Bell } from '@element-plus/icons-vue' // 删除了 ChatAssistant 引用
+import { DataLine, User, Fold, Expand, ArrowDown, Setting, Bell, Star, TrendCharts } from '@element-plus/icons-vue' // 删除了 ChatAssistant 引用
 import { ElMessage, ElMessageBox } from 'element-plus'
 import ChatAssistant from '../components/ChatAssistant.vue' // 引入
 const router = useRouter()
@@ -103,6 +125,14 @@ const userInfo = ref<any>({
     username: '',
     avatarUrl: ''
 })
+
+// 计算头像URL，确保相对路径也能正确显示
+const getAvatarUrl = computed(() => {
+    if (userInfo.value.avatarUrl) {
+        return userInfo.value.avatarUrl.startsWith('http') ? userInfo.value.avatarUrl : `http://localhost:8080${userInfo.value.avatarUrl}`;
+    }
+    return 'https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png';
+});
 
 const activeMenu = computed(() => route.path)
 
@@ -125,7 +155,7 @@ const breadcrumbs = computed(() => {
 const handleCommand = (command: string) => {
     if (command === 'logout') {
         ElMessageBox.confirm('确定退出登录吗？', '提示', { type: 'warning' }).then(() => {
-            localStorage.removeItem('user')
+            sessionStorage.removeItem('user')
             router.push('/login')
             ElMessage.success('退出成功')
         })
@@ -134,8 +164,18 @@ const handleCommand = (command: string) => {
     }
 }
 
+// 处理菜单选择
+const handleMenuSelect = (index: string) => {
+    router.push(`/${index}`)
+}
+
 onMounted(() => {
-    const userStr = localStorage.getItem('user')
+    loadUserInfo()
+})
+
+// 加载用户信息
+const loadUserInfo = () => {
+    const userStr = sessionStorage.getItem('user')
     if (userStr) {
         try {
             userInfo.value = JSON.parse(userStr)
@@ -143,7 +183,7 @@ onMounted(() => {
             console.error('用户信息解析失败', e)
         }
     }
-})
+}
 </script>
 
 <style scoped>
@@ -178,8 +218,65 @@ onMounted(() => {
     overflow: hidden;
 }
 
-.logo img {
-    width: 25px;
+.logo-icon {
+    width: 38px;
+    height: 38px;
+    background: linear-gradient(135deg, #c41e3a 0%, #e6a23c 100%);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    box-shadow: 0 4px 16px rgba(196, 30, 58, 0.4);
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    position: relative;
+    overflow: hidden;
+    transition: all 0.3s ease;
+}
+
+.logo-icon:hover {
+    transform: scale(1.1);
+    box-shadow: 0 6px 20px rgba(196, 30, 58, 0.6);
+}
+
+.logo-icon::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: linear-gradient(45deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    transform: rotate(45deg);
+    animation: shine 3s infinite;
+}
+
+@keyframes shine {
+    0% {
+        transform: translateX(-100%) rotate(45deg);
+    }
+
+    100% {
+        transform: translateX(100%) rotate(45deg);
+    }
+}
+
+.logo-chinese {
+    font-size: 24px;
+    font-weight: bold;
+    color: #fff;
+    font-family: 'STZhongsong', 'Microsoft YaHei', serif;
+    text-shadow: 1px 1px 4px rgba(0, 0, 0, 0.5);
+    letter-spacing: 2px;
+    position: relative;
+    z-index: 1;
+}
+
+.logo-text {
+    font-size: 16px;
+    font-family: 'Microsoft YaHei', serif;
+    letter-spacing: 1px;
+    white-space: nowrap;
 }
 
 .el-menu-vertical {

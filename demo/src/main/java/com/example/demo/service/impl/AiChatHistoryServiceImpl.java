@@ -1,5 +1,6 @@
 package com.example.demo.service.impl;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.example.demo.entity.AiChatHistory;
 import com.example.demo.mapper.AiChatHistoryMapper;
@@ -7,22 +8,41 @@ import com.example.demo.service.AiChatHistoryService;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Service
-public class AiChatHistoryServiceImpl extends ServiceImpl<AiChatHistoryMapper, AiChatHistory> implements AiChatHistoryService {
+public class AiChatHistoryServiceImpl extends ServiceImpl<AiChatHistoryMapper, AiChatHistory>
+        implements AiChatHistoryService {
 
     @Override
-    public boolean saveRecord(Long userId, String question, String answer) {
-        // 1. 创建对象
+    public boolean saveRecord(Long userId, Long chatId, String question, String answer) {
         AiChatHistory history = new AiChatHistory();
         history.setUserId(userId);
+        history.setChatId(chatId);
         history.setQuestion(question);
         history.setAnswer(answer);
-
-        // 2. 设置时间 (如果数据库字段没有设置 DEFAULT CURRENT_TIMESTAMP，这里需要手动设)
         history.setCreatedAt(LocalDateTime.now());
-
-        // 3. 调用 MyBatis-Plus 的保存方法
         return this.save(history);
+    }
+
+    @Override
+    public List<AiChatHistory> getRecentHistory(Long userId, Integer limit) {
+        LambdaQueryWrapper<AiChatHistory> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(AiChatHistory::getUserId, userId)
+                .orderByDesc(AiChatHistory::getCreatedAt)
+                .last("LIMIT " + limit);
+        return this.list(wrapper);
+    }
+
+    @Override
+    public List<AiChatHistory> getHistoryByChatId(Long userId, Long chatId, Integer limit) {
+        LambdaQueryWrapper<AiChatHistory> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(AiChatHistory::getUserId, userId);
+        if (chatId != null) {
+            wrapper.eq(AiChatHistory::getChatId, chatId);
+        }
+        wrapper.orderByDesc(AiChatHistory::getCreatedAt)
+                .last("LIMIT " + limit);
+        return this.list(wrapper);
     }
 }

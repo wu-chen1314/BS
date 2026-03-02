@@ -1,7 +1,7 @@
 package com.example.demo.websocket;
 
-import jakarta.websocket.*;
-import jakarta.websocket.server.ServerEndpoint;
+import javax.websocket.*;
+import javax.websocket.server.ServerEndpoint;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 

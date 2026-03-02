@@ -6,12 +6,16 @@ import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 import com.example.demo.common.Result;
+import com.example.demo.entity.AiChatHistory;
+import com.example.demo.entity.ChatSession;
 import com.example.demo.service.AiChatHistoryService;
+import com.example.demo.service.ChatSessionService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -21,36 +25,200 @@ public class ChatController {
     @Autowired
     private AiChatHistoryService aiChatHistoryService;
 
-    // ✨✨ 请将你的 DeepSeek API Key 填在这里，或者写在 application.yml 里
-    // 格式通常是 "sk-xxxxxxxxxxxxxxxx"
-    @Value("${deepseek.api.key:sk-ea1c953852ff41498f117594e99b9507}")
+    @Autowired
+    private ChatSessionService chatSessionService;
+
+    @Value("${deepseek.api.key}")
     private String apiKey;
 
-    // DeepSeek 的官方接口地址
     private static final String API_URL = "https://api.deepseek.com/chat/completions";
 
     /**
-     * 发送消息接口
+     * 发送消息接口（增强版：支持chatId参数）
      * POST /api/chat/send
+     * 
+     * 请求参数：
+     * - message: 消息内容（必填）
+     * - userId: 用户ID（必填）
+     * - chatId: 会话ID（可选，不传则创建新会话）
+     * - title: 会话标题（可选，仅在新会话时有效）
      */
     @PostMapping("/send")
-    public Result<String> send(@RequestBody Map<String, Object> params) {
+    public Result<Map<String, Object>> send(@RequestBody Map<String, Object> params) {
         String message = (String) params.get("message");
-        // 注意：前端传过来的 userId 可能是 Integer 也可能是 Long，转一下比较稳
-        Long userId = Long.valueOf(params.get("userId").toString());
+        Object userIdObj = params.get("userId");
+        Object chatIdObj = params.get("chatId");
+        String title = (String) params.get("title");
+
+        if (userIdObj == null) {
+            return Result.error("用户未登录，请先登录");
+        }
+        Long userId = Long.valueOf(userIdObj.toString());
 
         if (message == null || message.trim().isEmpty()) {
             return Result.error("请输入内容");
         }
 
+        // 处理会话ID
+        Long chatId = null;
+        ChatSession session = null;
+
+        if (chatIdObj != null) {
+            // 使用已有会话
+            chatId = Long.valueOf(chatIdObj.toString());
+            session = chatSessionService.getById(chatId);
+            if (session == null || !session.getUserId().equals(userId)) {
+                return Result.error("会话不存在或无权访问");
+            }
+        } else {
+            // 创建新会话
+            session = chatSessionService.createSession(userId, title);
+            chatId = session.getId();
+        }
+
         // 1. 调用 DeepSeek API 获取回复
         String aiReply = callDeepSeekApi(message);
 
-        // 2. ✨✨ 保存到数据库 (使用刚才写的 Service)
-        aiChatHistoryService.saveRecord(userId, message, aiReply);
+        // 2. 保存到数据库
+        aiChatHistoryService.saveRecord(userId, chatId, message, aiReply);
 
-        // 3. 返回给前端
-        return Result.success(aiReply);
+        // 3. 更新会话的最后消息和时间
+        chatSessionService.updateLastMessage(chatId, message + " | " + aiReply);
+
+        // 4. 返回结果
+        Map<String, Object> result = new HashMap<>();
+        result.put("reply", aiReply);
+        result.put("chatId", chatId);
+        result.put("sessionTitle", session.getTitle());
+
+        return Result.success(result);
+    }
+
+    /**
+     * 获取用户的聊天会话列表
+     * GET /api/chat/sessions
+     * 
+     * 请求参数：
+     * - userId: 用户ID（必填）
+     * - page: 页码（默认1）
+     * - limit: 每页数量（默认10）
+     */
+    @GetMapping("/sessions")
+    public Result<List<ChatSession>> getSessions(
+            @RequestParam Long userId,
+            @RequestParam(defaultValue = "1") Integer page,
+            @RequestParam(defaultValue = "10") Integer limit) {
+
+        if (userId == null) {
+            return Result.error("用户ID不能为空");
+        }
+
+        if (page < 1) {
+            page = 1;
+        }
+        if (limit < 1 || limit > 100) {
+            limit = 10;
+        }
+
+        List<ChatSession> sessions = chatSessionService.getUserSessions(userId, page, limit);
+        return Result.success(sessions);
+    }
+
+    /**
+     * 删除指定聊天会话
+     * DELETE /api/chat/sessions/{id}
+     * 
+     * URL参数：
+     * - id: 会话ID
+     * 
+     * 请求参数：
+     * - userId: 用户ID（必填，用于权限验证）
+     */
+    @DeleteMapping("/sessions/{id}")
+    public Result<String> deleteSession(
+            @PathVariable Long id,
+            @RequestParam Long userId) {
+
+        if (userId == null) {
+            return Result.error("用户ID不能为空");
+        }
+
+        if (id == null) {
+            return Result.error("会话ID不能为空");
+        }
+
+        try {
+            boolean deleted = chatSessionService.deleteSession(id, userId);
+            if (deleted) {
+                return Result.success(null);
+            } else {
+                return Result.error("会话不存在");
+            }
+        } catch (SecurityException e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
+    /**
+     * 创建新会话
+     * POST /api/chat/sessions
+     * 
+     * 请求参数：
+     * - userId: 用户ID（必填）
+     * - title: 会话标题（可选，默认"新会话"）
+     */
+    @PostMapping("/sessions")
+    public Result<ChatSession> createSession(@RequestBody Map<String, Object> params) {
+        Object userIdObj = params.get("userId");
+        String title = (String) params.get("title");
+
+        if (userIdObj == null) {
+            return Result.error("用户ID不能为空");
+        }
+
+        Long userId = Long.valueOf(userIdObj.toString());
+        ChatSession session = chatSessionService.createSession(userId, title);
+        return Result.success(session);
+    }
+
+    /**
+     * 查询用户 AI 对话历史记录
+     * GET /api/chat/history?userId=1&chatId=123&limit=20
+     */
+    @GetMapping("/history")
+    public Result<List<Map<String, Object>>> history(
+            @RequestParam Long userId,
+            @RequestParam(required = false) Long chatId,
+            @RequestParam(defaultValue = "20") Integer limit) {
+        if (userId == null) {
+            return Result.error("用户ID不能为空");
+        }
+
+        List<AiChatHistory> list;
+        if (chatId != null) {
+            list = aiChatHistoryService.getHistoryByChatId(userId, chatId, limit);
+        } else {
+            list = aiChatHistoryService.getRecentHistory(userId, limit);
+        }
+
+        java.util.Collections.reverse(list);
+
+        List<Map<String, Object>> messages = new java.util.ArrayList<>();
+        for (AiChatHistory history : list) {
+            Map<String, Object> userMsg = new HashMap<>();
+            userMsg.put("role", "user");
+            userMsg.put("content", history.getQuestion());
+            userMsg.put("timestamp", history.getCreatedAt());
+            messages.add(userMsg);
+
+            Map<String, Object> aiMsg = new HashMap<>();
+            aiMsg.put("role", "assistant");
+            aiMsg.put("content", history.getAnswer());
+            aiMsg.put("timestamp", history.getCreatedAt());
+            messages.add(aiMsg);
+        }
+
+        return Result.success(messages);
     }
 
     /**
@@ -58,30 +226,25 @@ public class ChatController {
      */
     private String callDeepSeekApi(String userMessage) {
         try {
-            // A. 构建请求体 (DeepSeek 要求 OpenAI 兼容格式)
             JSONObject body = new JSONObject();
-            body.set("model", "deepseek-chat"); // 模型名称
-            body.set("temperature", 0.7);       // 温度（创造性）
+            body.set("model", "deepseek-chat");
+            body.set("temperature", 0.7);
 
-            // 消息列表
             JSONArray messages = new JSONArray();
-            // 系统预设 (人设)
-            messages.add(new JSONObject().set("role", "system").set("content", "你是一个专业的非物质文化遗产科普助手，请用生动有趣的语言回答用户关于非遗的问题。"));
-            // 用户提问
+            messages.add(
+                    new JSONObject().set("role", "system").set("content", "你是一个专业的非物质文化遗产科普助手，请用生动有趣的语言回答用户关于非遗的问题。"));
             messages.add(new JSONObject().set("role", "user").set("content", userMessage));
 
             body.set("messages", messages);
 
-            // B. 发送 POST 请求
             System.out.println("正在请求 DeepSeek...");
             HttpResponse response = HttpRequest.post(API_URL)
-                    .header("Authorization", "Bearer " + apiKey) // 鉴权头
+                    .header("Authorization", "Bearer " + apiKey)
                     .header("Content-Type", "application/json")
                     .body(body.toString())
-                    .timeout(20000) // 设置超时时间 20秒
+                    .timeout(20000)
                     .execute();
 
-            // C. 解析响应
             String resultStr = response.body();
             System.out.println("DeepSeek 响应: " + resultStr);
 
@@ -89,9 +252,7 @@ public class ChatController {
                 return "AI 响应异常: " + response.getStatus();
             }
 
-            // D. 提取回复内容
             JSONObject json = JSONUtil.parseObj(resultStr);
-            // 路径: choices[0].message.content
             String content = json.getJSONArray("choices")
                     .getJSONObject(0)
                     .getJSONObject("message")

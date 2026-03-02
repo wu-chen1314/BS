@@ -5,6 +5,9 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.example.demo.common.Result;
 import com.example.demo.entity.SysUser;
 import com.example.demo.service.SysUserService;
+
+import java.util.Map;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.util.DigestUtils;
 import org.springframework.web.bind.annotation.*;
@@ -42,18 +45,101 @@ public class SysUserController {
         return Result.success(sysUserService.updateById(user));
     }
 
-    // ... 其他接口 (page, add, delete, change-password) 保持你原来的代码即可 ...
-    // 为了完整性，这里放一个分页查询的简化版，防止你报错
-    @GetMapping("/page")
-    public Result<Page<SysUser>> getPage(@RequestParam(defaultValue = "1") int pageNum,
-                                         @RequestParam(defaultValue = "10") int pageSize,
-                                         @RequestParam(required = false) String username) {
-        Page<SysUser> page = new Page<>(pageNum, pageSize);
-        LambdaQueryWrapper<SysUser> wrapper = new LambdaQueryWrapper<>();
-        if (StrUtil.isNotEmpty(username)) {
-            wrapper.like(SysUser::getUsername, username);
+    // 新增用户
+    @PostMapping("/add")
+    public Result<Boolean> add(@RequestBody SysUser user) {
+        if (StrUtil.isBlank(user.getUsername())) {
+            return Result.error("用户名不能为空");
         }
-        wrapper.orderByDesc(SysUser::getId);
-        return Result.success(sysUserService.page(page, wrapper));
+
+        // 检查用户名是否已存在
+        long count = sysUserService
+                .count(new LambdaQueryWrapper<SysUser>().eq(SysUser::getUsername, user.getUsername()));
+        if (count > 0) {
+            return Result.error("用户名已存在");
+        }
+
+        // 默认密码为 123456
+        String defaultPasswordHash = DigestUtils.md5DigestAsHex("123456".getBytes());
+        user.setPasswordHash(defaultPasswordHash);
+
+        return Result.success(sysUserService.save(user));
+    }
+
+    // 分页获取用户列表
+    @GetMapping("/page")
+    public Result<Page<SysUser>> page(
+            @RequestParam(defaultValue = "1") Integer pageNum,
+            @RequestParam(defaultValue = "10") Integer pageSize,
+            @RequestParam(required = false) String keyword) {
+        
+        Page<SysUser> page = new Page<>(pageNum, pageSize);
+        
+        // 构建查询条件
+        LambdaQueryWrapper<SysUser> wrapper = null;
+        if (StrUtil.isNotBlank(keyword)) {
+            wrapper = new LambdaQueryWrapper<SysUser>()
+                    .like(SysUser::getUsername, keyword)
+                    .or()
+                    .like(SysUser::getNickname, keyword)
+                    .or()
+                    .like(SysUser::getEmail, keyword)
+                    .or()
+                    .like(SysUser::getPhone, keyword);
+        } else {
+            wrapper = new LambdaQueryWrapper<>();
+        }
+        
+        // 执行分页查询
+        Page<SysUser> resultPage = sysUserService.page(page, wrapper);
+        
+        // 去除密码信息
+        resultPage.getRecords().forEach(user -> user.setPasswordHash(null));
+        
+        return Result.success(resultPage);
+    }
+
+    // 删除用户
+    @DeleteMapping("/delete/{id}")
+    public Result<Boolean> delete(@PathVariable Long id) {
+        return Result.success(sysUserService.removeById(id));
+    }
+
+    // 重置密码为 123456
+    @PutMapping("/reset-password/{id}")
+    public Result<Boolean> resetPassword(@PathVariable Long id) {
+        SysUser user = sysUserService.getById(id);
+        if (user == null) {
+            return Result.error("用户不存在");
+        }
+        String defaultPasswordHash = DigestUtils.md5DigestAsHex("123456".getBytes());
+        user.setPasswordHash(defaultPasswordHash);
+        return Result.success(sysUserService.updateById(user));
+    }
+
+    @PostMapping("/change-password")
+    public Result<Boolean> changePassword(@RequestBody Map<String, String> params) {
+        Long id = Long.parseLong(params.get("id"));
+        String oldPassword = params.get("oldPassword");
+        String newPassword = params.get("newPassword");
+
+        // 验证旧密码
+        SysUser user = sysUserService.getById(id);
+        if (user == null) {
+            return Result.error("用户不存在");
+        }
+
+        // 加密旧密码并验证
+        String md5OldPassword = DigestUtils.md5DigestAsHex(oldPassword.getBytes());
+        if (!md5OldPassword.equals(user.getPasswordHash())) {
+            return Result.error("原密码错误");
+        }
+
+        // 加密新密码并更新
+        String md5NewPassword = DigestUtils.md5DigestAsHex(newPassword.getBytes());
+        user.setPasswordHash(md5NewPassword);
+        boolean success = sysUserService.updateById(user);
+
+        return Result.success(success);
     }
 }

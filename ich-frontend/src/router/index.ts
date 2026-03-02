@@ -20,18 +20,16 @@ const router = createRouter({
         {
           path: "home",
           name: "home",
-          component: () => import("../views/Home.vue"), // ✨ 修复点 2：使用相对路径
+          component: () => import("../views/Home.vue"),
         },
         {
           path: "inheritor",
           name: "inheritor",
-          // ✨ 修复点 3：确保文件名大小写正确 (I 大写)
           component: () => import("../views/Inheritor.vue"),
         },
         {
           path: "user",
           name: "user",
-          // ✨ 修复点 4：新增的用户管理页面
           component: () => import("../views/User.vue"),
         },
         {
@@ -40,9 +38,27 @@ const router = createRouter({
           component: () => import("../views/Profile.vue"),
         },
         {
+          path: "favorites",
+          name: "favorites",
+          component: () => import("../views/Favorites.vue"),
+          meta: { title: "我的收藏" },
+        },
+        {
+          path: "hot-ranking",
+          name: "hot-ranking",
+          component: () => import("../views/HotRanking.vue"),
+          meta: { title: "热度排行" },
+        },
+        {
+          path: "chat",
+          name: "chat",
+          component: () => import("../views/Chat.vue"),
+          meta: { title: "AI 聊天" },
+        },
+        {
           path: "person",
           name: "Person",
-          component: () => import("../views/person.vue"),
+          component: () => import("../views/Profile.vue"),
           meta: { title: "个人中心" },
         },
       ],
@@ -52,8 +68,12 @@ const router = createRouter({
 
 // 路由守卫
 router.beforeEach((to, from, next) => {
-  const user = localStorage.getItem("user");
-  if (to.name !== "login" && !user) {
+  const user = sessionStorage.getItem("user");
+  // 检查是否是登录页面或公开页面
+  const publicPages = ["/login"];
+  const isPublicPage = publicPages.includes(to.path);
+
+  if (!isPublicPage && !user) {
     next({ name: "login" });
   } else {
     next();
