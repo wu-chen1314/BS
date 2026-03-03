@@ -37,6 +37,15 @@
                     <span>AI 聊天</span>
                 </el-menu-item>
 
+                <!-- ===== 新增：地区分类菜单项 ===== -->
+                <el-menu-item index="region-category">
+                    <el-icon>
+                        <Location />
+                    </el-icon>
+                    <span>地区分类</span>
+                </el-menu-item>
+                <!-- ================================= -->
+
                 <el-menu-item index="inheritor" v-if="userInfo.role === 'admin'">
                     <el-icon>
                         <User />
@@ -84,7 +93,7 @@
                         <div style="display: flex; align-items: center; cursor: pointer; outline: none;">
                             <el-avatar :size="30" :src="getAvatarUrl" />
                             <span style="margin-left: 8px; margin-right: 5px;">{{ userInfo.nickname || userInfo.username
-                            }}</span>
+                                }}</span>
                             <el-tag size="small" effect="dark" :type="userInfo.role === 'admin' ? 'danger' : 'success'">
                                 {{ userInfo.role === 'admin' ? '管理员' : '普通用户' }}
                             </el-tag>
@@ -112,7 +121,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { DataLine, User, Fold, Expand, ArrowDown, Setting, Bell, Star, TrendCharts } from '@element-plus/icons-vue' // 删除了 ChatAssistant 引用
+import { DataLine, User, Fold, Expand, ArrowDown, Setting, Bell, Star, TrendCharts, Location } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import ChatAssistant from '../components/ChatAssistant.vue' // 引入
 const router = useRouter()

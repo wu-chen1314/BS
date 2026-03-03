@@ -61,6 +61,14 @@ const router = createRouter({
           component: () => import("../views/Profile.vue"),
           meta: { title: "个人中心" },
         },
+        // ===== 新增：地区分类路由 =====
+        {
+          path: "region-category",
+          name: "region-category",
+          component: () => import("../views/RegionCategory.vue"),
+          meta: { title: "地区分类" },
+        },
+        // ===========================
       ],
     },
   ],
