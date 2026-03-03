@@ -1,0 +1,53 @@
+server:
+  port: 8080
+
+spring:
+  mail:
+    host: smtp.qq.com
+    username: 2084992154@qq.com # 替换为你的真实QQ邮箱
+    password: idjkyybewyxgdffi # 绝对不是QQ密码！是十几位的授权码
+    default-encoding: UTF-8
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+          ssl:
+            enable: true
+  application:
+    name: ich-promotion-system
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://localhost:3306/ich_promotion_db?serverTimezone=Asia/Shanghai&useUnicode=true&characterEncoding=utf-8&useSSL=false
+    username: root
+    password: 12345678
+  servlet:
+    multipart:
+      max-file-size: 100MB
+      max-request-size: 100MB
+  # ✅ Bug1修复：Redis 配置必须在 spring: 下才能生效
+  redis:
+    host: 127.0.0.1
+    port: 6379
+    database: 0
+    lettuce:
+      pool:
+        max-active: 8
+        max-wait: -1ms
+        max-idle: 8
+        min-idle: 0
+    connect-timeout: 5000
+    timeout: 5000
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+  mapper-locations: classpath*:/mapper/**/*.xml
+
+# ✅ Bug2修复：DeepSeek API Key 从配置文件读取，脱离源码
+deepseek:
+  api:
+    key: sk-ea1c953852ff41498f117594e99b9507
