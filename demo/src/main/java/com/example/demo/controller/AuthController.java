@@ -1,6 +1,6 @@
 package com.example.demo.controller;
 
-import com.example.demo.common.Result;
+import com.example.demo.common.result.Result;
 import com.example.demo.entity.SysUser;
 import com.example.demo.service.SysUserService;
 import org.springframework.beans.factory.annotation.Autowired;

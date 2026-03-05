@@ -1,7 +1,7 @@
 package com.example.demo.controller;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
-import com.example.demo.common.Result;
+import com.example.demo.common.result.Result;
 import com.example.demo.entity.IchProject;
 import com.example.demo.entity.IchProjectView;
 import com.example.demo.service.IchProjectService;

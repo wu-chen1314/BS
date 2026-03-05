@@ -1,4 +1,4 @@
-package com.example.demo.request;
+package com.example.demo.model.dto;
 
 import java.util.List;
 

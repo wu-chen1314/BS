@@ -1,8 +1,8 @@
 package com.example.demo.controller;
 
-import com.example.demo.common.Result;
+import com.example.demo.common.result.Result;
 import com.example.demo.entity.SysUser;
-import com.example.demo.request.LoginRequest;
+import com.example.demo.model.dto.LoginRequest;
 import com.example.demo.service.LoginAttemptService;
 import com.example.demo.service.SysUserService;
 import com.example.demo.util.JwtUtil;

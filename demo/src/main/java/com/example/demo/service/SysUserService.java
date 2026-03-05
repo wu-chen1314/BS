@@ -1,7 +1,7 @@
 package com.example.demo.service;
 
 import com.baomidou.mybatisplus.extension.service.IService;
-import com.example.demo.common.Result;
+import com.example.demo.common.result.Result;
 import com.example.demo.entity.SysUser;
 
 import java.util.Map;

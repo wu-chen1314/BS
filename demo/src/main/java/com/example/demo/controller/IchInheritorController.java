@@ -2,10 +2,10 @@ package com.example.demo.controller;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.example.demo.common.Result;
+import com.example.demo.common.result.Result;
 import com.example.demo.entity.IchInheritor;
 import com.example.demo.entity.IchProject;
-import com.example.demo.request.BatchDeleteRequest;
+import com.example.demo.model.dto.BatchDeleteRequest;
 import com.example.demo.service.IchInheritorService;
 import com.example.demo.service.IchProjectService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -33,7 +33,7 @@ public class IchInheritorController {
      */
     @GetMapping("/page")
     @PostMapping("/page")
-    public Result<Page<IchInheritor>> page(
+    public Result<Page<com.example.demo.model.vo.IchInheritorVO>> page(
             @RequestParam(defaultValue = "1") Integer pageNum,
             @RequestParam(defaultValue = "10") Integer pageSize,
             @RequestParam(required = false) String name) {
@@ -45,6 +45,7 @@ public class IchInheritorController {
         query.orderByDesc("id");
 
         Page<IchInheritor> pageResult = inheritorService.page(new Page<>(pageNum, pageSize), query);
+        Page<com.example.demo.model.vo.IchInheritorVO> voPage = new Page<>(pageNum, pageSize, pageResult.getTotal());
 
         if (!pageResult.getRecords().isEmpty()) {
             // ✅ Bug4修复：一次批量 IN 查询取出所有项目名，避免 N+1
@@ -54,19 +55,27 @@ public class IchInheritorController {
                     .distinct()
                     .collect(Collectors.toList());
 
+            Map<Long, String> nameMap = new java.util.HashMap<>();
             if (!projectIds.isEmpty()) {
                 List<IchProject> projects = projectService.listByIds(projectIds);
-                Map<Long, String> nameMap = projects.stream()
+                nameMap = projects.stream()
                         .collect(Collectors.toMap(IchProject::getId, IchProject::getName));
-                pageResult.getRecords().forEach(record -> {
-                    if (record.getProjectId() != null) {
-                        record.setProjectName(nameMap.getOrDefault(record.getProjectId(), ""));
-                    }
-                });
             }
+
+            final Map<Long, String> finalNameMap = nameMap;
+            List<com.example.demo.model.vo.IchInheritorVO> voList = pageResult.getRecords().stream().map(record -> {
+                com.example.demo.model.vo.IchInheritorVO vo = new com.example.demo.model.vo.IchInheritorVO();
+                org.springframework.beans.BeanUtils.copyProperties(record, vo);
+                if (vo.getProjectId() != null) {
+                    vo.setProjectName(finalNameMap.getOrDefault(vo.getProjectId(), ""));
+                }
+                return vo;
+            }).collect(Collectors.toList());
+
+            voPage.setRecords(voList);
         }
 
-        return Result.success(pageResult);
+        return Result.success(voPage);
     }
 
     @PostMapping("/add")
@@ -99,10 +108,10 @@ public class IchInheritorController {
      * 1. 数组格式：[1, 2, 3]
      * 2. 对象格式：{ "ids": [1, 2, 3] }
      */
-    @RequestMapping(value = {"/batch", "/delete/batch"}, method = RequestMethod.POST)
+    @RequestMapping(value = { "/batch", "/delete/batch" }, method = RequestMethod.POST)
     public Result<Integer> batchDelete(@RequestBody Object request) {
         List<Long> ids = null;
-        
+
         // 处理不同的请求格式
         if (request instanceof java.util.List) {
             // 数组格式：[1, 2, 3]
@@ -144,18 +153,18 @@ public class IchInheritorController {
             // BatchDeleteRequest 对象格式
             ids = ((BatchDeleteRequest) request).getIds();
         }
-        
+
         if (ids == null || ids.isEmpty()) {
             return Result.error("请选择要删除的传承人");
         }
-        
+
         int count = 0;
         for (Long id : ids) {
             if (inheritorService.removeById(id)) {
                 count++;
             }
         }
-        
+
         if (count > 0) {
             Result<Integer> result = Result.success(count);
             result.setMsg("成功删除 " + count + " 位传承人");
@@ -178,12 +187,12 @@ public class IchInheritorController {
     public Result<Integer> batchDeleteByProject(@PathVariable Long projectId) {
         QueryWrapper<IchInheritor> query = new QueryWrapper<>();
         query.eq("project_id", projectId);
-        
+
         List<IchInheritor> inheritors = inheritorService.list(query);
         if (inheritors.isEmpty()) {
             return Result.error("该项目下没有传承人");
         }
-        
+
         boolean success = inheritorService.remove(query);
         if (success) {
             Result<Integer> result = Result.success(inheritors.size());

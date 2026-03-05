@@ -2,12 +2,10 @@ package com.example.demo.entity;
 
 import com.alibaba.excel.annotation.ExcelProperty;
 import com.baomidou.mybatisplus.annotation.IdType;
-import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 import java.time.LocalDateTime;
-import java.util.List;
 
 @TableName("ich_project")
 @Data
@@ -26,7 +24,10 @@ public class IchProject {
     // ✨✨✨ 必须补上这个字段！
     // 对应数据库的 video_url 字段
     private String videoUrl;
-    private Integer auditStatus; // 审核状态：1 通过
+    private Integer auditStatus; // 审核状态：0=待审核 1=已通过 2=已驳回
+    private String auditReason; // 驳回原因
+    private String auditBy; // 审核人
+    private Long submitterId; // 申报人用户ID
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -36,25 +37,6 @@ public class IchProject {
     private String address; // 详细地址
     private String contactPhone; // 联系电话
     private String openingHours; // 开放时间
-
-    // ✨✨✨ 新增临时字段
-    @TableField(exist = false)
-    private String inheritorNames;
-
-    // ✨✨✨ 新增临时字段
-    @TableField(exist = false)
-    private List<Long> inheritorIds;
-
-    @TableField(exist = false)
-    private Long viewCount;
-
-    public Long getViewCount() {
-        return viewCount;
-    }
-
-    public void setViewCount(Long viewCount) {
-        this.viewCount = viewCount;
-    }
 
     public Long getId() {
         return id;
@@ -144,6 +126,30 @@ public class IchProject {
         this.auditStatus = auditStatus;
     }
 
+    public String getAuditReason() {
+        return auditReason;
+    }
+
+    public void setAuditReason(String auditReason) {
+        this.auditReason = auditReason;
+    }
+
+    public String getAuditBy() {
+        return auditBy;
+    }
+
+    public void setAuditBy(String auditBy) {
+        this.auditBy = auditBy;
+    }
+
+    public Long getSubmitterId() {
+        return submitterId;
+    }
+
+    public void setSubmitterId(Long submitterId) {
+        this.submitterId = submitterId;
+    }
+
     public LocalDateTime getCreatedAt() {
         return createdAt;
     }
@@ -158,22 +164,6 @@ public class IchProject {
 
     public void setUpdatedAt(LocalDateTime updatedAt) {
         this.updatedAt = updatedAt;
-    }
-
-    public String getInheritorNames() {
-        return inheritorNames;
-    }
-
-    public void setInheritorNames(String inheritorNames) {
-        this.inheritorNames = inheritorNames;
-    }
-
-    public List<Long> getInheritorIds() {
-        return inheritorIds;
-    }
-
-    public void setInheritorIds(List<Long> inheritorIds) {
-        this.inheritorIds = inheritorIds;
     }
 
 }

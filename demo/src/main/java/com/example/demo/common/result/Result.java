@@ -1,4 +1,4 @@
-package com.example.demo.common; // 注意改为你的实际包名
+package com.example.demo.common.result; // 注意改为你的实际包名
 
 import lombok.Data;
 

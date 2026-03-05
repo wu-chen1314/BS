@@ -61,6 +61,13 @@ const router = createRouter({
           component: () => import("../views/Profile.vue"),
           meta: { title: "个人中心" },
         },
+        // ===== 新增：审核台路由 =====
+        {
+          path: "audit-center",
+          name: "audit-center",
+          component: () => import("../views/AuditCenter.vue"),
+          meta: { title: "非遗审核台", requireAdmin: true },
+        },
         // ===== 新增：地区分类路由 =====
         {
           path: "region-category",

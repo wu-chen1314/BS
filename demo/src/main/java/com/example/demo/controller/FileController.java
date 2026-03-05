@@ -1,6 +1,6 @@
 package com.example.demo.controller;
 
-import com.example.demo.common.Result;
+import com.example.demo.common.result.Result;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 

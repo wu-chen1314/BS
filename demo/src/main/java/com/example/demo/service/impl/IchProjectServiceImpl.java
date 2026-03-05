@@ -5,7 +5,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
-import com.example.demo.common.Result;
+import com.example.demo.common.result.Result;
 import com.example.demo.entity.AppComment;
 import com.example.demo.entity.AppFavorite;
 import com.example.demo.entity.IchInheritor;
@@ -57,7 +57,7 @@ public class IchProjectServiceImpl extends ServiceImpl<IchProjectMapper, IchProj
         // ✅ Bug6修复：多步操作加入事务，任意步骤出错则全部回滚
         @Override
         @Transactional(rollbackFor = Exception.class)
-        public Result<Boolean> saveProjectWithInheritors(IchProject project) {
+        public Result<Boolean> saveProjectWithInheritors(com.example.demo.model.dto.IchProjectDTO project) {
                 boolean success = this.saveOrUpdate(project);
                 if (success) {
                         Long projectId = project.getId();

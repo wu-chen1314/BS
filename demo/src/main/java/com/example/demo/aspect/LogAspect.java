@@ -1,4 +1,4 @@
-package com.example.demo.aop;
+package com.example.demo.aspect;
 
 import com.example.demo.entity.SysOperationLog;
 import com.example.demo.mapper.SysOperationLogMapper;

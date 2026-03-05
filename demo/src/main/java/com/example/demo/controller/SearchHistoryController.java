@@ -1,6 +1,6 @@
 package com.example.demo.controller;
 
-import com.example.demo.common.Result;
+import com.example.demo.common.result.Result;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.web.bind.annotation.*;

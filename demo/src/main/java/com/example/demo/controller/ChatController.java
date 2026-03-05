@@ -5,7 +5,7 @@ import cn.hutool.http.HttpResponse;
 import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
-import com.example.demo.common.Result;
+import com.example.demo.common.result.Result;
 import com.example.demo.entity.AiChatHistory;
 import com.example.demo.entity.ChatSession;
 import com.example.demo.service.AiChatHistoryService;
@@ -44,54 +44,57 @@ public class ChatController {
      * - title: 会话标题（可选，仅在新会话时有效）
      */
     @PostMapping("/send")
-    public Result<Map<String, Object>> send(@RequestBody Map<String, Object> params) {
-        String message = (String) params.get("message");
-        Object userIdObj = params.get("userId");
-        Object chatIdObj = params.get("chatId");
-        String title = (String) params.get("title");
+    public java.util.concurrent.CompletableFuture<Result<Map<String, Object>>> send(
+            @RequestBody Map<String, Object> params) {
+        return java.util.concurrent.CompletableFuture.supplyAsync(() -> {
+            String message = (String) params.get("message");
+            Object userIdObj = params.get("userId");
+            Object chatIdObj = params.get("chatId");
+            String title = (String) params.get("title");
 
-        if (userIdObj == null) {
-            return Result.error("用户未登录，请先登录");
-        }
-        Long userId = Long.valueOf(userIdObj.toString());
-
-        if (message == null || message.trim().isEmpty()) {
-            return Result.error("请输入内容");
-        }
-
-        // 处理会话ID
-        Long chatId = null;
-        ChatSession session = null;
-
-        if (chatIdObj != null) {
-            // 使用已有会话
-            chatId = Long.valueOf(chatIdObj.toString());
-            session = chatSessionService.getById(chatId);
-            if (session == null || !session.getUserId().equals(userId)) {
-                return Result.error("会话不存在或无权访问");
+            if (userIdObj == null) {
+                return Result.error("用户未登录，请先登录");
             }
-        } else {
-            // 创建新会话
-            session = chatSessionService.createSession(userId, title);
-            chatId = session.getId();
-        }
+            Long userId = Long.valueOf(userIdObj.toString());
 
-        // 1. 调用 DeepSeek API 获取回复
-        String aiReply = callDeepSeekApi(message);
+            if (message == null || message.trim().isEmpty()) {
+                return Result.error("请输入内容");
+            }
 
-        // 2. 保存到数据库
-        aiChatHistoryService.saveRecord(userId, chatId, message, aiReply);
+            // 处理会话ID
+            Long chatId = null;
+            ChatSession session = null;
 
-        // 3. 更新会话的最后消息和时间
-        chatSessionService.updateLastMessage(chatId, message + " | " + aiReply);
+            if (chatIdObj != null) {
+                // 使用已有会话
+                chatId = Long.valueOf(chatIdObj.toString());
+                session = chatSessionService.getById(chatId);
+                if (session == null || !session.getUserId().equals(userId)) {
+                    return Result.error("会话不存在或无权访问");
+                }
+            } else {
+                // 创建新会话
+                session = chatSessionService.createSession(userId, title);
+                chatId = session.getId();
+            }
 
-        // 4. 返回结果
-        Map<String, Object> result = new HashMap<>();
-        result.put("reply", aiReply);
-        result.put("chatId", chatId);
-        result.put("sessionTitle", session.getTitle());
+            // 1. 调用 DeepSeek API 获取回复
+            String aiReply = callDeepSeekApi(message);
 
-        return Result.success(result);
+            // 2. 保存到数据库
+            aiChatHistoryService.saveRecord(userId, chatId, message, aiReply);
+
+            // 3. 更新会话的最后消息和时间
+            chatSessionService.updateLastMessage(chatId, message + " | " + aiReply);
+
+            // 4. 返回结果
+            Map<String, Object> result = new HashMap<>();
+            result.put("reply", aiReply);
+            result.put("chatId", chatId);
+            result.put("sessionTitle", session.getTitle());
+
+            return Result.success(result);
+        });
     }
 
     /**

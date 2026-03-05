@@ -21,91 +21,82 @@
             </el-col>
         </el-row>
 
-        <!-- ✨ 新增：通知公告区 -->
-        <el-row :gutter="24" class="news-row" style="margin-bottom: 24px;">
+        <!-- ✨ 新增：中国地图全景概览 -->
+        <el-row :gutter="24" class="map-row" style="margin-bottom: 24px;">
             <el-col :span="24">
-                <el-card shadow="hover" class="premium-card news-card">
+                <el-card shadow="hover" class="premium-card map-card">
                     <div class="chart-header">
-                        <span class="chart-title"><el-icon>
-                                <Bell />
-                            </el-icon> 动态公告</span>
+                        <span class="chart-title"><el-icon color="#c41e3a"><MapLocation /></el-icon> 全国非遗分布大屏</span>
                         <div class="chart-decoration"></div>
                     </div>
-                    <div class="news-list">
-                        <div class="news-item">
-                            <span class="news-tag new">NEW</span>
-                            <span class="news-text">国家级非物质文化遗产生产性保护示范基地名单公示</span>
-                            <span class="news-date">03-01</span>
-                        </div>
-                        <div class="news-item">
-                            <span class="news-tag">荐</span>
-                            <span class="news-text">"非遗进校园"优秀实践案例征集活动启动</span>
-                            <span class="news-date">02-28</span>
-                        </div>
-                        <div class="news-item">
-                            <span class="news-tag">告</span>
-                            <span class="news-text">关于加强传统技艺类非遗项目版权保护的通知</span>
-                            <span class="news-date">02-25</span>
-                        </div>
-                    </div>
+                    <!-- 使用 v-loading 保证地图加载时的优雅交互 -->
+                    <div id="chinaMap" style="height: 480px; width: 100%;" v-loading="mapLoading"></div>
                 </el-card>
             </el-col>
         </el-row>
 
         <div class="premium-toolbar">
-            <div class="search-group">
-                <div class="search-input-container">
-                    <el-input v-model="searchName" placeholder="输入非遗项目名称..." class="rounded-input" size="large"
-                        clearable @clear="fetchData" @keyup.enter="handleSearch" :prefix-icon="Search"
-                        @focus="showSearchHistory = true" @blur="() => hideSearchHistory()" />
+            <div class="toolbar-section search-section">
+                <div class="search-group">
+                    <div class="search-input-container">
+                        <el-input v-model="searchName" placeholder="输入非遗项目名称..." class="rounded-input" size="large"
+                            clearable @clear="fetchData" @keyup.enter="handleSearch" :prefix-icon="Search"
+                            @focus="showSearchHistory = true" @blur="() => hideSearchHistory()" />
 
-                    <!-- 搜索历史下拉菜单 -->
-                    <div v-if="showSearchHistory && searchHistory.length > 0 && userInfo.id"
-                        class="search-history-dropdown">
-                        <div class="search-history-header">
-                            <span>搜索历史</span>
-                            <el-button link type="primary" size="small" @click.stop="clearSearchHistory">清空</el-button>
-                        </div>
-                        <div class="search-history-list">
-                            <div v-for="(keyword, index) in searchHistory" :key="index" class="search-history-item"
-                                @click.stop="selectSearchHistory(keyword)">
-                                <el-icon class="history-icon">
-                                    <Clock />
-                                </el-icon>
-                                <span>{{ keyword }}</span>
+                        <div v-if="showSearchHistory && searchHistory.length > 0 && userInfo.id"
+                            class="search-history-dropdown">
+                            <div class="search-history-header">
+                                <span>搜索历史</span>
+                                <el-button link type="primary" size="small" @click.stop="clearSearchHistory">清空</el-button>
+                            </div>
+                            <div class="search-history-list">
+                                <div v-for="(keyword, index) in searchHistory" :key="index" class="search-history-item"
+                                    @click.stop="selectSearchHistory(keyword)">
+                                    <el-icon class="history-icon">
+                                        <Clock />
+                                    </el-icon>
+                                    <span>{{ keyword }}</span>
+                                </div>
                             </div>
                         </div>
                     </div>
+                    <el-select v-model="searchLevel" placeholder="筛选保护级别" size="large" clearable @clear="fetchData"
+                        class="rounded-select">
+                        <el-option label="国家级" value="国家级" />
+                        <el-option label="省级" value="省级" />
+                        <el-option label="市级" value="市级" />
+                        <el-option label="县级" value="县级" />
+                    </el-select>
+                    <el-select v-if="userInfo.role === 'admin'" v-model="searchAuditStatus" placeholder="审核状态" size="large" clearable @clear="fetchData"
+                        class="rounded-select" style="margin-left: 10px; width: 130px;">
+                        <el-option label="已通过" :value="1" />
+                        <el-option label="待审核" :value="0" />
+                        <el-option label="已驳回" :value="2" />
+                    </el-select>
+                    <el-button type="primary" size="large" @click="handleSearch" class="btn-explore">
+                        开始探索
+                    </el-button>
                 </div>
-                <el-select v-model="searchLevel" placeholder="筛选保护级别" size="large" clearable @clear="fetchData"
-                    class="rounded-select">
-                    <el-option label="国家级" value="国家级" />
-                    <el-option label="省级" value="省级" />
-                    <el-option label="市级" value="市级" />
-                    <el-option label="县级" value="县级" />
-                </el-select>
-                <el-button type="primary" size="large" @click="handleSearch" class="btn-explore">
-                    开始探索
-                </el-button>
             </div>
 
-            <div class="admin-actions" v-if="userInfo.role === 'admin'">
-                <el-button type="danger" plain round @click="handleBatchDelete"
-                    :disabled="multipleSelection.length === 0">
-                    <el-icon>
-                        <Delete />
-                    </el-icon> 批量删除
-                </el-button>
+            <div class="toolbar-section action-section">
+                <div class="toolbar-divider" v-if="userInfo.role === 'admin'"></div>
                 <el-button type="success" round @click="openAddDialog" class="btn-add">
-                    <el-icon>
-                        <Plus />
-                    </el-icon> 新增项目
+                    <el-icon><Plus /></el-icon> 申报项目
                 </el-button>
-                <el-button type="warning" round @click="handleExport" class="btn-export">
-                    <el-icon>
-                        <Download />
-                    </el-icon> 导出名录
-                </el-button>
+                <template v-if="userInfo.role === 'admin'">
+                    <el-button type="danger" plain round @click="handleBatchDelete"
+                        :disabled="multipleSelection.length === 0">
+                        <el-icon><Delete /></el-icon> 批量删除
+                    </el-button>
+                    <el-button type="warning" round @click="handleExport" class="btn-export">
+                        <el-icon><Download /></el-icon> 导出名录
+                    </el-button>
+                    <el-button type="danger" round @click="$router.push('/audit-center')" class="btn-audit">
+                        <el-icon><Document /></el-icon> 审核台
+                        <el-badge v-if="pendingCount > 0" :value="pendingCount" class="audit-btn-badge" />
+                    </el-button>
+                </template>
             </div>
         </div>
 
@@ -122,7 +113,7 @@
                             </div>
 
                             <el-image
-                                :src="item.coverUrl || 'https://images.unsplash.com/photo-1599839575945-a9e5af0c3fa5?q=80&w=2069&auto=format&fit=crop'"
+                                :src="getFileUrl(item.coverUrl) || 'https://images.unsplash.com/photo-1599839575945-a9e5af0c3fa5?q=80&w=2069&auto=format&fit=crop'"
                                 class="cover-img" fit="cover" loading="lazy" />
 
                             <div class="badge-level" :class="getLevelClass(item.protectLevel)">
@@ -152,6 +143,16 @@
                                 <el-tag size="small" type="info" effect="plain" round
                                     style="margin-left: 8px; border-color: #dcdfe6; color: #606266;">
                                     {{ getCategoryName(item.categoryId) }}
+                                </el-tag>
+
+                                <!-- 审核状态标识（仅管理员可见） -->
+                                <el-tag v-if="userInfo.role === 'admin' && (item.auditStatus === 0 || item.auditStatus === null || item.auditStatus === undefined)"
+                                    size="small" type="warning" effect="dark" round style="margin-left: 8px;">
+                                    <el-icon style="margin-right: 3px;"><Clock /></el-icon>待审核
+                                </el-tag>
+                                <el-tag v-if="userInfo.role === 'admin' && item.auditStatus === 2"
+                                    size="small" type="danger" effect="dark" round style="margin-left: 8px;">
+                                    <el-icon style="margin-right: 3px;"><CircleClose /></el-icon>已驳回
                                 </el-tag>
                             </div>
 
@@ -206,7 +207,7 @@
                 <div class="my-dialog-header">
                     <h4 :id="titleId" :class="titleClass">
                         <span class="dialog-title-accent"></span>
-                        {{ form.id ? (userInfo.role === 'admin' ? '编辑项目信息' : '非遗项目概览') : '新增非遗项目' }}
+                        {{ form.id ? (userInfo.role === 'admin' ? '编辑项目信息' : '非遗项目概览') : '申报新非遗项目' }}
                     </h4>
                     <el-button v-if="form.id && userInfo.role !== 'admin'" :type="isFavorited ? 'warning' : ''" circle
                         size="default" @click="toggleFavorite"
@@ -218,6 +219,16 @@
                     </el-button>
                 </div>
             </template>
+
+            <!-- 驳回原因横幅（已驳回项目展示） -->
+            <div v-if="form.auditStatus === 2 && form.auditReason" class="reject-banner-dialog">
+                <el-icon color="#F56C6C" size="18"><WarningFilled /></el-icon>
+                <div>
+                    <strong>审核已驳回</strong>
+                    <div class="reject-reason-text">驳回原因：{{ form.auditReason }}</div>
+                    <div class="reject-by-text" v-if="form.auditBy">审核人：{{ form.auditBy }}</div>
+                </div>
+            </div>
 
             <div class="dialog-body">
                 <el-form :model="form" label-width="90px" :disabled="userInfo.role !== 'admin' && form.id">
@@ -270,7 +281,7 @@
                         <el-upload class="avatar-uploader" action="http://localhost:8080/api/file/upload"
                             :show-file-list="false" :on-success="handleAvatarSuccess"
                             :before-upload="beforeAvatarUpload" :disabled="userInfo.role !== 'admin' && form.id">
-                            <img v-if="form.coverUrl" :src="form.coverUrl" class="avatar" />
+                            <img v-if="form.coverUrl" :src="getFileUrl(form.coverUrl)" class="avatar" />
                             <el-icon v-else class="avatar-uploader-icon">
                                 <Plus />
                             </el-icon>
@@ -288,7 +299,7 @@
                                     v-if="userInfo.role === 'admin'">移除</el-button>
                             </div>
                         </el-upload>
-                        <video v-if="form.videoUrl" :src="form.videoUrl" controls
+                        <video v-if="form.videoUrl" :src="getFileUrl(form.videoUrl)" controls
                             style="width: 100%; max-height: 240px; margin-top: 15px; border-radius: 8px; background: #000; box-shadow: 0 4px 12px rgba(0,0,0,0.1);"></video>
                     </el-form-item>
 
@@ -340,10 +351,20 @@
             </div>
 
             <template #footer>
-                <el-button round @click="dialogVisible = false">关闭</el-button>
-                <el-button round type="primary" @click="saveProject" :loading="btnLoading"
-                    v-if="userInfo.role === 'admin'"
-                    style="background-color: #c41e3a; border-color: #c41e3a;">保存更改</el-button>
+                <div style="display: flex; justify-content: space-between; width: 100%;">
+                    <div>
+                        <span v-if="userInfo.role === 'admin' && form.id && (form.auditStatus === 0 || form.auditStatus === null || form.auditStatus === undefined)">
+                            <el-button type="success" plain @click="handleAudit(1)">通过审核</el-button>
+                            <el-button type="danger" plain @click="handleAudit(2)">驳回申请</el-button>
+                        </span>
+                    </div>
+                    <div>
+                        <el-button round @click="dialogVisible = false">关闭</el-button>
+                        <el-button round type="primary" @click="saveProject" :loading="btnLoading"
+                            v-if="userInfo.role === 'admin' || !form.id"
+                            style="background-color: #c41e3a; border-color: #c41e3a;">保存更改</el-button>
+                    </div>
+                </div>
             </template>
         </el-dialog>
     </div>
@@ -354,7 +375,7 @@
 // ✨ 注意：引入了 onUnmounted 和 ElNotification
 import { ref, reactive, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Plus, Search, Download, Star, StarFilled, ChatLineRound, VideoPlay, Delete, Clock, View, Link, TrendCharts, Bell, Top, ArrowRight } from '@element-plus/icons-vue'
+import { Plus, Search, Download, Star, StarFilled, ChatLineRound, VideoPlay, Delete, Clock, View, Link, TrendCharts, Bell, Top, ArrowRight, MapLocation, CircleClose, WarningFilled, Document } from '@element-plus/icons-vue'
 import axios from 'axios'
 import request from '@/utils/request'
 import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
@@ -373,11 +394,14 @@ const total = ref(0)
 const pageSize = ref(8)
 const currentPage = ref(1)
 const loading = ref(false)
+const mapLoading = ref(true) // ✨ 新增：地图专属 loading 状态
 const dialogVisible = ref(false)
 const searchName = ref('')
 const searchLevel = ref('')
+const searchAuditStatus = ref<number | undefined>(undefined)
 const btnLoading = ref(false)
 const multipleSelection = ref<number[]>([])
+const pendingCount = ref(0)
 
 const isFavorited = ref(false)
 const favoritedProjects = ref<number[]>([])
@@ -463,12 +487,19 @@ const initWebSocket = () => {
 const fetchData = async () => {
     loading.value = true
     try {
+        let currentAuditStatus = searchAuditStatus.value;
+        // 普通用户固定只能看已通过的项目状态 = 1
+        if (userInfo.value.role !== 'admin') {
+            currentAuditStatus = 1;
+        }
+
         const res = await request.get('/projects/page', {
             params: {
                 pageNum: currentPage.value,
                 pageSize: pageSize.value,
                 name: searchName.value,
-                protectLevel: searchLevel.value
+                protectLevel: searchLevel.value,
+                auditStatus: currentAuditStatus
             }
         })
         if (res.data.code === 200) {
@@ -649,16 +680,32 @@ const saveProject = async () => {
     if (!form.name) return ElMessage.warning('项目名称为必填项')
     btnLoading.value = true
     try {
-        const req = form.id ? axios.put : axios.post
-        const url = `http://localhost:8080/api/projects/${form.id ? 'update' : 'add'}`
+        const req = form.id ? request.put : request.post
+        const url = `/projects/${form.id ? 'update' : 'add'}`
         const res = await req(url, form)
         if (res.data.code === 200) {
-            ElMessage.success('信息已存档')
+            ElMessage.success(form.id ? '信息已更新' : '项目申报已提交')
             dialogVisible.value = false;
             fetchData();
             initCharts();
         } else ElMessage.error(res.data.msg)
     } finally { btnLoading.value = false }
+}
+
+const handleAudit = async (status: number) => {
+    if (!form.id) return
+    try {
+        const res = await request.put('/projects/audit', null, { params: { id: form.id, auditStatus: status } })
+        if (res.data.code === 200) {
+            ElMessage.success(status === 1 ? '该项目申报已通过审核' : '该项目已被驳回')
+            dialogVisible.value = false
+            fetchData()
+        } else {
+            ElMessage.error(res.data.msg || '操作失败')
+        }
+    } catch (e) {
+        ElMessage.error('网络请求异常，请检查后端状态')
+    }
 }
 
 const handleCardSelectionChange = () => {
@@ -683,15 +730,29 @@ const handleDelete = (id: number) => {
 }
 
 // 文件上传
+const getFileUrl = (url?: string) => {
+    if (!url) return '';
+    if (url.startsWith('http')) return url;
+    return `http://localhost:8080${url.startsWith('/') ? '' : '/'}${url}`;
+};
+
 const handleAvatarSuccess: UploadProps['onSuccess'] = (res) => { if (res.code === 200) form.coverUrl = res.data }
 const beforeAvatarUpload: UploadProps['beforeUpload'] = (file) => {
-    const isImg = file.type === 'image/jpeg' || file.type === 'image/png'
-    if (!isImg) ElMessage.error('仅支持 JPG/PNG 格式'); return isImg
+    const isImg = file.type === 'image/jpeg' || file.type === 'image/png';
+    if (!isImg) {
+        ElMessage.error('仅支持 JPG/PNG 格式');
+        return false;
+    }
+    return true;
 }
 const handleVideoSuccess: UploadProps['onSuccess'] = (res) => { if (res.code === 200) form.videoUrl = res.data }
 const beforeVideoUpload: UploadProps['beforeUpload'] = (file) => {
-    const isVideo = file.type.startsWith('video/')
-    if (!isVideo) ElMessage.error('仅支持视频文件'); return isVideo
+    const isVideo = file.type.startsWith('video/');
+    if (!isVideo) {
+        ElMessage.error('仅支持视频文件');
+        return false;
+    }
+    return true;
 }
 const uploadQuillImage = async (e: any) => {
     const file = e.target.files[0]; if (!file) return
@@ -821,19 +882,129 @@ const initCharts = async () => {
             }
         } catch (e) { console.error(e) }
     }
+
+    // ✨ 新增：初始化全国大屏地图
+    const chinaMapDom = document.getElementById('chinaMap')
+    if (chinaMapDom) {
+        echarts.getInstanceByDom(chinaMapDom)?.dispose()
+        const myChinaMap = echarts.init(chinaMapDom)
+        
+        try {
+            // 1. 获取地图热点数据
+            const mapRes = await request.get('/statistics/map')
+            let mapData = mapRes.data.code === 200 ? mapRes.data.data : []
+
+            // 2. 加载中国地图 GeoJSON 数据
+            const geoJsonRes = await axios.get('/china.json')
+            echarts.registerMap('china', geoJsonRes.data as any)
+
+            // ✨ 修复：由于后端返回的是如"北京"的短称，与 china.json 的"北京市"完整名冲突，由前端借用 geojson 的 features 做包含判断反向补全。
+            if (mapData && mapData.length > 0 && geoJsonRes.data?.features) {
+                mapData = mapData.map((d: any) => {
+                    let finalName = d.name;
+                    if (finalName) {
+                        const matchedFeature = geoJsonRes.data.features.find((f: any) => 
+                            f.properties.name.includes(finalName) || finalName.includes(f.properties.name)
+                        );
+                        if (matchedFeature) {
+                            finalName = matchedFeature.properties.name;
+                        }
+                    }
+                    return { ...d, name: finalName };
+                });
+            }
+
+            // 3. 计算最大值以调配 visualMap 等级
+            let maxVal = 100
+            if (mapData && mapData.length > 0) {
+                maxVal = Math.max(...mapData.map((d: any) => d.value))
+            }
+
+            // 4. 渲染地图
+            myChinaMap.setOption({
+                tooltip: {
+                    trigger: 'item',
+                    backgroundColor: 'rgba(255,255,255,0.9)',
+                    borderColor: '#eee',
+                    textStyle: { color: '#333' },
+                    formatter: function(params: any) {
+                        const val = params.value || 0
+                        return `<div style="padding: 4px;">
+                                   <div style="font-weight: bold; margin-bottom: 4px;">${params.name}</div>
+                                   <div style="color: #c41e3a;">国家/省非遗项目: ${val} 项</div>
+                                </div>`
+                    }
+                },
+                visualMap: {
+                    min: 0,
+                    max: maxVal + 10,
+                    left: '3%',
+                    bottom: '5%',
+                    text: ['繁荣', '稀有'], // 文本，默认为数值文本
+                    calculable: true,
+                    inRange: {
+                        color: ['#f8ebd8', '#e6a23c', '#c41e3a'] // 黄/红的高级过渡
+                    },
+                    textStyle: {
+                        color: '#606266'
+                    }
+                },
+                series: [
+                    {
+                        name: '非遗分布指数',
+                        type: 'map',
+                        map: 'china',
+                        roam: true,
+                        zoom: 1.2, // 默认放大比例
+                        scaleLimit: { min: 0.8, max: 3 }, // 缩放边界
+                        label: {
+                            show: false, // 正常情况隐藏省份文字以保持整洁
+                            color: '#2c3e50',
+                            fontSize: 10
+                        },
+                        emphasis: {
+                            label: { show: true },
+                            itemStyle: {
+                                areaColor: '#f1c40f', // 悬浮高亮色
+                                shadowBlur: 10,
+                                shadowColor: 'rgba(0, 0, 0, 0.5)'
+                            }
+                        },
+                        itemStyle: {
+                            borderColor: '#ffffff', // 省份边框颜色
+                            borderWidth: 1,
+                            areaColor: '#f4f6f9'
+                        },
+                        data: mapData
+                    }
+                ]
+            })
+        } catch (error) {
+            console.error('地图组件渲染失败', error)
+        } finally {
+            mapLoading.value = false // 渲染完成关闭 loading
+        }
+    }
 }
 
 // 窗口自适应
 window.addEventListener('resize', () => {
     const pieChart = document.getElementById('pieChart')
     const barChart = document.getElementById('barChart')
-    if (pieChart) {
-        echarts.getInstanceByDom(pieChart as HTMLElement)?.resize()
-    }
-    if (barChart) {
-        echarts.getInstanceByDom(barChart as HTMLElement)?.resize()
-    }
+    const chinaMap = document.getElementById('chinaMap')
+    
+    if (pieChart) echarts.getInstanceByDom(pieChart as HTMLElement)?.resize()
+    if (barChart) echarts.getInstanceByDom(barChart as HTMLElement)?.resize()
+    if (chinaMap) echarts.getInstanceByDom(chinaMap as HTMLElement)?.resize()
 })
+
+const fetchPendingCount = async () => {
+    if (userInfo.value.role !== 'admin') return
+    try {
+        const res = await request.get('/projects/page', { params: { pageNum: 1, pageSize: 1, auditStatus: 0 } })
+        pendingCount.value = res.data.data?.total || 0
+    } catch {}
+}
 
 // ================== 生命周期钩子 ==================
 onMounted(() => {
@@ -848,6 +1019,7 @@ onMounted(() => {
     initCharts()
     loadFavoritedProjects()
     loadSearchHistory()
+    fetchPendingCount()
 
     // 处理路由参数，从热度排行榜页面跳转过来时打开对应项目
     if (route.query.id) {
@@ -1693,5 +1865,64 @@ const getCategoryName = (id: number) => {
 
 .custom-append :deep(.el-input__wrapper) {
     border-radius: 20px 0 0 20px;
+}
+
+/* ================= 审核流程配套样式 ================= */
+.premium-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #fff;
+    padding: 16px 24px;
+    border-radius: var(--card-radius);
+    box-shadow: var(--shadow-soft);
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+    gap: 16px;
+}
+
+.toolbar-section {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.toolbar-divider {
+    width: 1px;
+    height: 32px;
+    background: #ebeef5;
+    margin: 0 12px;
+}
+
+.reject-banner-dialog {
+    background: #fef0f0;
+    border: 1px solid #fbc4c4;
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin: 0 24px 20px;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    color: #f56c6c;
+}
+
+.reject-reason-text {
+    font-size: 14px;
+    margin-top: 4px;
+    line-height: 1.5;
+}
+
+.reject-by-text {
+    font-size: 12px;
+    margin-top: 4px;
+    opacity: 0.8;
+}
+
+.audit-btn-badge {
+    pointer-events: none;
+}
+
+:deep(.audit-btn-badge .el-badge__content) {
+    top: -2px;
 }
 </style>

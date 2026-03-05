@@ -46,6 +46,15 @@
                 </el-menu-item>
                 <!-- ================================= -->
 
+                <!-- 审核台：仅管理员可见 -->
+                <el-menu-item index="audit-center" v-if="userInfo.role === 'admin'" class="audit-menu-item">
+                    <el-icon><Document /></el-icon>
+                    <template #title>
+                        <span>审核台</span>
+                        <el-badge v-if="pendingAuditCount > 0" :value="pendingAuditCount" class="audit-badge" type="danger" />
+                    </template>
+                </el-menu-item>
+
                 <el-menu-item index="inheritor" v-if="userInfo.role === 'admin'">
                     <el-icon>
                         <User />
@@ -121,8 +130,9 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { DataLine, User, Fold, Expand, ArrowDown, Setting, Bell, Star, TrendCharts, Location } from '@element-plus/icons-vue'
+import { DataLine, User, Fold, Expand, ArrowDown, Setting, Bell, Star, TrendCharts, Location, Document } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import request from '@/utils/request'
 import ChatAssistant from '../components/ChatAssistant.vue' // 引入
 const router = useRouter()
 const route = useRoute()
@@ -178,8 +188,20 @@ const handleMenuSelect = (index: string) => {
     router.push(`/${index}`)
 }
 
+const pendingAuditCount = ref(0)
+
+const fetchPendingCount = async () => {
+    if (userInfo.value.role !== 'admin') return
+    try {
+        const res = await request.get('/projects/page', { params: { pageNum: 1, pageSize: 1, auditStatus: 0 } })
+        pendingAuditCount.value = res.data.data?.total || 0
+    } catch {}
+}
+
 onMounted(() => {
     loadUserInfo()
+    // 延迟调用，等待 userInfo 加载完成
+    setTimeout(() => fetchPendingCount(), 500)
 })
 
 // 加载用户信息

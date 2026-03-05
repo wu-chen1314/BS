@@ -1,4 +1,4 @@
-package com.example.demo.common;
+package com.example.demo.common.result;
 
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
