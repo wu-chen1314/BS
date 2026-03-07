@@ -4,8 +4,10 @@ import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 
 import javax.annotation.PostConstruct;
+import java.nio.charset.StandardCharsets;
 import java.security.Key;
 import java.util.Date;
 import java.util.HashMap;
@@ -14,22 +16,25 @@ import java.util.Map;
 @Component
 public class JwtUtil {
 
-    @Value("${jwt.secret:ichPromotionSystemSecretKey202603021530NonHeritage}")
+    @Value("${jwt.secret:}")
     private String secret;
 
     @Value("${jwt.expiration:86400000}")
-    private Long expiration; // 默认 24 小时
+    private Long expiration;
 
     private Key key;
 
     @PostConstruct
     public void init() {
-        this.key = Keys.hmacShaKeyFor(secret.getBytes());
+        if (!StringUtils.hasText(secret)) {
+            throw new IllegalStateException("JWT_SECRET is required");
+        }
+        if (secret.getBytes(StandardCharsets.UTF_8).length < 32) {
+            throw new IllegalStateException("JWT_SECRET must be at least 32 bytes");
+        }
+        this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
     }
 
-    /**
-     * 生成 JWT Token
-     */
     public String generateToken(Map<String, Object> claims, String username) {
         if (claims == null) {
             claims = new HashMap<>();
@@ -47,9 +52,6 @@ public class JwtUtil {
                 .compact();
     }
 
-    /**
-     * 从 Token 中获取用户名
-     */
     public String getUsernameFromToken(String token) {
         try {
             return Jwts.parserBuilder()
@@ -63,9 +65,6 @@ public class JwtUtil {
         }
     }
 
-    /**
-     * 从 Token 中获取 Claims
-     */
     public Claims getClaimsFromToken(String token) {
         try {
             return Jwts.parserBuilder()
@@ -78,9 +77,6 @@ public class JwtUtil {
         }
     }
 
-    /**
-     * 验证 Token 是否有效
-     */
     public boolean validateToken(String token) {
         try {
             Jwts.parserBuilder()
@@ -89,22 +85,19 @@ public class JwtUtil {
                     .parseClaimsJws(token);
             return true;
         } catch (SignatureException e) {
-            System.err.println("Token 签名无效");
+            System.err.println("Token signature is invalid");
         } catch (MalformedJwtException e) {
-            System.err.println("Token 格式无效");
+            System.err.println("Token format is invalid");
         } catch (ExpiredJwtException e) {
-            System.err.println("Token 已过期");
+            System.err.println("Token has expired");
         } catch (UnsupportedJwtException e) {
-            System.err.println("不支持的 Token 类型");
+            System.err.println("Token type is unsupported");
         } catch (IllegalArgumentException e) {
-            System.err.println("Token 参数为空");
+            System.err.println("Token is empty");
         }
         return false;
     }
 
-    /**
-     * 检查 Token 是否过期
-     */
     public boolean isTokenExpired(String token) {
         try {
             Claims claims = getClaimsFromToken(token);
@@ -117,9 +110,6 @@ public class JwtUtil {
         }
     }
 
-    /**
-     * 刷新 Token（如果未过期）
-     */
     public String refreshToken(String token) {
         if (!validateToken(token)) {
             return null;

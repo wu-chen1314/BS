@@ -1,11 +1,13 @@
 server:
-  port: 8080
+  port: ${SERVER_PORT:8080}
 
 spring:
+  application:
+    name: ich-promotion-system
   mail:
-    host: smtp.qq.com
-    username: 2084992154@qq.com # 替换为你的真实QQ邮箱
-    password: idjkyybewyxgdffi # 绝对不是QQ密码！是十几位的授权码
+    host: ${MAIL_HOST:smtp.qq.com}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
     default-encoding: UTF-8
     properties:
       mail:
@@ -16,30 +18,28 @@ spring:
             required: true
           ssl:
             enable: true
-  application:
-    name: ich-promotion-system
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
-    url: jdbc:mysql://localhost:3306/ich_promotion_db?serverTimezone=Asia/Shanghai&useUnicode=true&characterEncoding=utf-8&useSSL=false
-    username: root
-    password: 12345678
+    url: ${DB_URL:jdbc:mysql://localhost:3306/ich_promotion_db?serverTimezone=Asia/Shanghai&useUnicode=true&characterEncoding=utf-8&useSSL=false}
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:}
   servlet:
     multipart:
       max-file-size: 100MB
       max-request-size: 100MB
-  # ✅ Bug1修复：Redis 配置必须在 spring: 下才能生效
   redis:
-    host: 127.0.0.1
-    port: 6379
-    database: 0
+    enabled: ${REDIS_ENABLED:false}
+    host: ${REDIS_HOST:127.0.0.1}
+    port: ${REDIS_PORT:6379}
+    database: ${REDIS_DATABASE:0}
     lettuce:
       pool:
-        max-active: 8
-        max-wait: -1ms
-        max-idle: 8
-        min-idle: 0
-    connect-timeout: 5000
-    timeout: 5000
+        max-active: ${REDIS_MAX_ACTIVE:8}
+        max-wait: ${REDIS_MAX_WAIT:-1ms}
+        max-idle: ${REDIS_MAX_IDLE:8}
+        min-idle: ${REDIS_MIN_IDLE:0}
+    connect-timeout: ${REDIS_CONNECT_TIMEOUT:5000}
+    timeout: ${REDIS_TIMEOUT:5000}
 
 mybatis-plus:
   configuration:
@@ -47,7 +47,10 @@ mybatis-plus:
     log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
   mapper-locations: classpath*:/mapper/**/*.xml
 
-# ✅ Bug2修复：DeepSeek API Key 从配置文件读取，脱离源码
+jwt:
+  secret: ${JWT_SECRET:}
+  expiration: ${JWT_EXPIRATION:86400000}
+
 deepseek:
   api:
-    key: sk-ea1c953852ff41498f117594e99b9507
+    key: ${DEEPSEEK_API_KEY:}

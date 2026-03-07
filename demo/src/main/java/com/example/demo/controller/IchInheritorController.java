@@ -6,12 +6,15 @@ import com.example.demo.common.result.Result;
 import com.example.demo.entity.IchInheritor;
 import com.example.demo.entity.IchProject;
 import com.example.demo.model.dto.BatchDeleteRequest;
+import com.example.demo.model.vo.IchInheritorVO;
 import com.example.demo.service.IchInheritorService;
 import com.example.demo.service.IchProjectService;
+import com.example.demo.util.RequestAuthUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.bind.annotation.RequestMethod;
 
+import javax.servlet.http.HttpServletRequest;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -26,52 +29,46 @@ public class IchInheritorController {
     @Autowired
     private IchProjectService projectService;
 
-    /**
-     * 获取传承人列表
-     * GET /api/inheritors/page
-     * POST /api/inheritors/page (也支持 POST 方法)
-     */
     @GetMapping("/page")
     @PostMapping("/page")
-    public Result<Page<com.example.demo.model.vo.IchInheritorVO>> page(
-            @RequestParam(defaultValue = "1") Integer pageNum,
-            @RequestParam(defaultValue = "10") Integer pageSize,
-            @RequestParam(required = false) String name) {
-
+    public Result<Page<IchInheritorVO>> page(@RequestParam(defaultValue = "1") Integer pageNum,
+                                             @RequestParam(defaultValue = "10") Integer pageSize,
+                                             @RequestParam(required = false) String name,
+                                             @RequestParam(required = false) Long projectId) {
         QueryWrapper<IchInheritor> query = new QueryWrapper<>();
         if (name != null && !name.isEmpty()) {
             query.like("name", name);
         }
+        if (projectId != null) {
+            query.eq("project_id", projectId);
+        }
         query.orderByDesc("id");
 
         Page<IchInheritor> pageResult = inheritorService.page(new Page<>(pageNum, pageSize), query);
-        Page<com.example.demo.model.vo.IchInheritorVO> voPage = new Page<>(pageNum, pageSize, pageResult.getTotal());
+        Page<IchInheritorVO> voPage = new Page<>(pageNum, pageSize, pageResult.getTotal());
 
         if (!pageResult.getRecords().isEmpty()) {
-            // ✅ Bug4修复：一次批量 IN 查询取出所有项目名，避免 N+1
             List<Long> projectIds = pageResult.getRecords().stream()
                     .map(IchInheritor::getProjectId)
                     .filter(id -> id != null)
                     .distinct()
                     .collect(Collectors.toList());
 
-            Map<Long, String> nameMap = new java.util.HashMap<>();
+            Map<Long, String> projectNameMap = new HashMap<>();
             if (!projectIds.isEmpty()) {
                 List<IchProject> projects = projectService.listByIds(projectIds);
-                nameMap = projects.stream()
-                        .collect(Collectors.toMap(IchProject::getId, IchProject::getName));
+                projectNameMap = projects.stream().collect(Collectors.toMap(IchProject::getId, IchProject::getName));
             }
 
-            final Map<Long, String> finalNameMap = nameMap;
-            List<com.example.demo.model.vo.IchInheritorVO> voList = pageResult.getRecords().stream().map(record -> {
-                com.example.demo.model.vo.IchInheritorVO vo = new com.example.demo.model.vo.IchInheritorVO();
+            final Map<Long, String> finalProjectNameMap = projectNameMap;
+            List<IchInheritorVO> voList = pageResult.getRecords().stream().map(record -> {
+                IchInheritorVO vo = new IchInheritorVO();
                 org.springframework.beans.BeanUtils.copyProperties(record, vo);
                 if (vo.getProjectId() != null) {
-                    vo.setProjectName(finalNameMap.getOrDefault(vo.getProjectId(), ""));
+                    vo.setProjectName(finalProjectNameMap.getOrDefault(vo.getProjectId(), ""));
                 }
                 return vo;
             }).collect(Collectors.toList());
-
             voPage.setRecords(voList);
         }
 
@@ -79,83 +76,51 @@ public class IchInheritorController {
     }
 
     @PostMapping("/add")
-    public Result<Boolean> add(@RequestBody IchInheritor inheritor) {
+    public Result<Boolean> add(@RequestBody IchInheritor inheritor, HttpServletRequest request) {
+        if (!RequestAuthUtil.isAdmin(request)) {
+            return Result.error("Only administrators can add inheritors");
+        }
         return Result.success(inheritorService.save(inheritor));
     }
 
     @PutMapping("/update")
-    public Result<Boolean> update(@RequestBody IchInheritor inheritor) {
+    public Result<Boolean> update(@RequestBody IchInheritor inheritor, HttpServletRequest request) {
+        if (!RequestAuthUtil.isAdmin(request)) {
+            return Result.error("Only administrators can update inheritors");
+        }
         return Result.success(inheritorService.updateById(inheritor));
     }
 
-    /**
-     * 删除传承人
-     * DELETE /api/inheritors/delete/{id}
-     * POST /api/inheritors/delete/{id} (也支持 POST 方法)
-     */
     @DeleteMapping("/delete/{id}")
     @PostMapping("/delete/{id}")
-    public Result<Boolean> delete(@PathVariable Long id) {
+    public Result<Boolean> delete(@PathVariable Long id, HttpServletRequest request) {
+        if (!RequestAuthUtil.isAdmin(request)) {
+            return Result.error("Only administrators can delete inheritors");
+        }
         return Result.success(inheritorService.removeById(id));
     }
 
-    /**
-     * 批量删除传承人（支持数组和对象两种格式）
-     * POST /api/inheritors/batch
-     * POST /api/inheritors/delete/batch
-     * 
-     * 支持两种请求格式：
-     * 1. 数组格式：[1, 2, 3]
-     * 2. 对象格式：{ "ids": [1, 2, 3] }
-     */
     @RequestMapping(value = { "/batch", "/delete/batch" }, method = RequestMethod.POST)
-    public Result<Integer> batchDelete(@RequestBody Object request) {
-        List<Long> ids = null;
+    public Result<Integer> batchDelete(@RequestBody Object requestBody, HttpServletRequest request) {
+        if (!RequestAuthUtil.isAdmin(request)) {
+            return Result.error("Only administrators can batch delete inheritors");
+        }
 
-        // 处理不同的请求格式
-        if (request instanceof java.util.List) {
-            // 数组格式：[1, 2, 3]
-            List<?> rawList = (List<?>) request;
-            ids = rawList.stream()
-                    .map(item -> {
-                        if (item instanceof Long) {
-                            return (Long) item;
-                        } else if (item instanceof Integer) {
-                            return ((Integer) item).longValue();
-                        } else if (item instanceof Number) {
-                            return ((Number) item).longValue();
-                        } else {
-                            throw new IllegalArgumentException("Invalid ID type: " + item.getClass());
-                        }
-                    })
-                    .collect(Collectors.toList());
-        } else if (request instanceof java.util.Map) {
-            // 对象格式：{ "ids": [1, 2, 3] }
-            Map<?, ?> map = (Map<?, ?>) request;
-            Object idsObj = map.get("ids");
+        List<Long> ids = null;
+        if (requestBody instanceof List) {
+            List<?> rawList = (List<?>) requestBody;
+            ids = rawList.stream().map(this::castToLong).collect(Collectors.toList());
+        } else if (requestBody instanceof Map) {
+            Object idsObj = ((Map<?, ?>) requestBody).get("ids");
             if (idsObj instanceof List) {
-                List<?> rawList = (List<?>) idsObj;
-                ids = rawList.stream()
-                        .map(item -> {
-                            if (item instanceof Long) {
-                                return (Long) item;
-                            } else if (item instanceof Integer) {
-                                return ((Integer) item).longValue();
-                            } else if (item instanceof Number) {
-                                return ((Number) item).longValue();
-                            } else {
-                                throw new IllegalArgumentException("Invalid ID type: " + item.getClass());
-                            }
-                        })
-                        .collect(Collectors.toList());
+                ids = ((List<?>) idsObj).stream().map(this::castToLong).collect(Collectors.toList());
             }
-        } else if (request instanceof BatchDeleteRequest) {
-            // BatchDeleteRequest 对象格式
-            ids = ((BatchDeleteRequest) request).getIds();
+        } else if (requestBody instanceof BatchDeleteRequest) {
+            ids = ((BatchDeleteRequest) requestBody).getIds();
         }
 
         if (ids == null || ids.isEmpty()) {
-            return Result.error("请选择要删除的传承人");
+            return Result.error("Please select inheritors to delete");
         }
 
         int count = 0;
@@ -165,41 +130,46 @@ public class IchInheritorController {
             }
         }
 
-        if (count > 0) {
-            Result<Integer> result = Result.success(count);
-            result.setMsg("成功删除 " + count + " 位传承人");
-            return result;
-        } else {
-            // 即使没有删除成功的记录，也返回成功但提示用户
-            Result<Integer> result = Result.success(count);
-            result.setMsg("没有找到匹配的记录进行删除");
-            return result;
-        }
+        Result<Integer> result = Result.success(count);
+        result.setMsg(count > 0 ? "Deleted " + count + " inheritors" : "No matching inheritors were deleted");
+        return result;
     }
 
-    /**
-     * 根据项目 ID 批量删除传承人
-     * DELETE /api/inheritors/batch-by-project/{projectId}
-     * POST /api/inheritors/batch-by-project/{projectId} (也支持 POST 方法)
-     */
     @DeleteMapping("/batch-by-project/{projectId}")
     @PostMapping("/batch-by-project/{projectId}")
-    public Result<Integer> batchDeleteByProject(@PathVariable Long projectId) {
+    public Result<Integer> batchDeleteByProject(@PathVariable Long projectId, HttpServletRequest request) {
+        if (!RequestAuthUtil.isAdmin(request)) {
+            return Result.error("Only administrators can batch delete inheritors");
+        }
+
         QueryWrapper<IchInheritor> query = new QueryWrapper<>();
         query.eq("project_id", projectId);
 
         List<IchInheritor> inheritors = inheritorService.list(query);
         if (inheritors.isEmpty()) {
-            return Result.error("该项目下没有传承人");
+            return Result.error("No inheritors found for this project");
         }
 
         boolean success = inheritorService.remove(query);
-        if (success) {
-            Result<Integer> result = Result.success(inheritors.size());
-            result.setMsg("成功删除 " + inheritors.size() + " 位传承人");
-            return result;
-        } else {
-            return Result.error("删除失败");
+        if (!success) {
+            return Result.error("Delete failed");
         }
+
+        Result<Integer> result = Result.success(inheritors.size());
+        result.setMsg("Deleted " + inheritors.size() + " inheritors");
+        return result;
+    }
+
+    private Long castToLong(Object item) {
+        if (item instanceof Long) {
+            return (Long) item;
+        }
+        if (item instanceof Integer) {
+            return ((Integer) item).longValue();
+        }
+        if (item instanceof Number) {
+            return ((Number) item).longValue();
+        }
+        throw new IllegalArgumentException("Invalid ID type: " + item.getClass());
     }
 }

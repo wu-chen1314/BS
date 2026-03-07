@@ -7,9 +7,11 @@ import com.example.demo.entity.AppFavorite;
 import com.example.demo.entity.IchProject;
 import com.example.demo.service.AppFavoriteService;
 import com.example.demo.service.IchProjectService;
+import com.example.demo.util.RequestAuthUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
+import javax.servlet.http.HttpServletRequest;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -24,47 +26,55 @@ public class AppFavoriteController {
     @Autowired
     private IchProjectService projectService;
 
-    // 切换收藏状态
     @PostMapping("/toggle")
-    public Result<Boolean> toggleFavorite(@RequestBody AppFavorite favorite) {
-        if (favorite.getUserId() == null || favorite.getProjectId() == null) {
-            return Result.error("参数错误");
+    public Result<Boolean> toggleFavorite(@RequestBody AppFavorite favorite, HttpServletRequest request) {
+        Long currentUserId = RequestAuthUtil.getCurrentUserId(request);
+        if (currentUserId == null) {
+            return Result.error("Please log in first");
         }
+        if (favorite.getProjectId() == null) {
+            return Result.error("Project ID is required");
+        }
+        if (favorite.getUserId() != null && !RequestAuthUtil.isSelfOrAdmin(request, favorite.getUserId())) {
+            return Result.error("Cannot change another user's favorites");
+        }
+
+        Long effectiveUserId = favorite.getUserId() == null ? currentUserId : favorite.getUserId();
         LambdaQueryWrapper<AppFavorite> query = new LambdaQueryWrapper<>();
-        query.eq(AppFavorite::getUserId, favorite.getUserId())
+        query.eq(AppFavorite::getUserId, effectiveUserId)
                 .eq(AppFavorite::getProjectId, favorite.getProjectId());
         AppFavorite exist = favoriteService.getOne(query);
         if (exist != null) {
             favoriteService.removeById(exist.getId());
             return Result.success(false);
-        } else {
-            favorite.setCreatedAt(LocalDateTime.now());
-            favoriteService.save(favorite);
-            return Result.success(true);
         }
+
+        favorite.setUserId(effectiveUserId);
+        favorite.setCreatedAt(LocalDateTime.now());
+        favoriteService.save(favorite);
+        return Result.success(true);
     }
 
-    // 查询某用户是否收藏了某项目
     @GetMapping("/check")
-    public Result<Boolean> checkFavorite(@RequestParam Long userId, @RequestParam Long projectId) {
+    public Result<Boolean> checkFavorite(@RequestParam Long userId, @RequestParam Long projectId, HttpServletRequest request) {
+        if (!RequestAuthUtil.isSelfOrAdmin(request, userId)) {
+            return Result.error("Cannot view another user's favorite status");
+        }
         long count = favoriteService.count(new LambdaQueryWrapper<AppFavorite>()
                 .eq(AppFavorite::getUserId, userId)
                 .eq(AppFavorite::getProjectId, projectId));
         return Result.success(count > 0);
     }
 
-    /**
-     * ✨ 新功能3：分页查询用户的收藏列表，并关联返回项目基本信息
-     * GET /api/favorites/list?userId=1&pageNum=1&pageSize=10
-     */
     @GetMapping("/list")
     public Result<Page<IchProject>> getFavoriteList(@RequestParam Long userId,
-            @RequestParam(defaultValue = "1") Integer pageNum,
-            @RequestParam(defaultValue = "10") Integer pageSize) {
-        if (userId == null) {
-            return Result.error("用户ID不能为空");
+                                                    @RequestParam(defaultValue = "1") Integer pageNum,
+                                                    @RequestParam(defaultValue = "10") Integer pageSize,
+                                                    HttpServletRequest request) {
+        if (!RequestAuthUtil.isSelfOrAdmin(request, userId)) {
+            return Result.error("Cannot view another user's favorites");
         }
-        // 1. 查出该用户的所有收藏记录（按时间倒序）
+
         List<AppFavorite> favorites = favoriteService.list(
                 new LambdaQueryWrapper<AppFavorite>()
                         .eq(AppFavorite::getUserId, userId)
@@ -72,12 +82,11 @@ public class AppFavoriteController {
         if (favorites.isEmpty()) {
             return Result.success(new Page<>());
         }
-        // 2. 提取项目ID列表
+
         List<Long> projectIds = favorites.stream()
                 .map(AppFavorite::getProjectId)
                 .collect(Collectors.toList());
 
-        // 3. 分页查询这批项目（保持收藏时间倒序）
         Page<IchProject> page = projectService.page(
                 new Page<>(pageNum, pageSize),
                 new LambdaQueryWrapper<IchProject>().in(IchProject::getId, projectIds));

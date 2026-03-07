@@ -1,17 +1,30 @@
 package com.example.demo.controller;
 
+import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.example.demo.common.result.Result;
+import com.example.demo.entity.AiChatHistory;
+import com.example.demo.entity.AppComment;
+import com.example.demo.entity.AppFavorite;
+import com.example.demo.entity.ChatSession;
+import com.example.demo.entity.SysOperationLog;
 import com.example.demo.entity.SysUser;
+import com.example.demo.mapper.AiChatHistoryMapper;
+import com.example.demo.mapper.AppCommentMapper;
+import com.example.demo.mapper.AppFavoriteMapper;
+import com.example.demo.mapper.ChatSessionMapper;
+import com.example.demo.mapper.SysOperationLogMapper;
 import com.example.demo.service.SysUserService;
-
-import java.util.Map;
-
+import com.example.demo.util.RequestAuthUtil;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.DigestUtils;
 import org.springframework.web.bind.annotation.*;
-import cn.hutool.core.util.StrUtil; // 如果报错，请确保引入了 Hutool 或换用 StringUtils
+
+import javax.servlet.http.HttpServletRequest;
+import java.nio.charset.StandardCharsets;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/users")
@@ -20,63 +33,102 @@ public class SysUserController {
     @Autowired
     private SysUserService sysUserService;
 
-    // ✨✨✨ 必须有的接口：获取详情用于回显 ✨✨✨
+    @Autowired
+    private SysOperationLogMapper sysOperationLogMapper;
+
+    @Autowired
+    private AppFavoriteMapper appFavoriteMapper;
+
+    @Autowired
+    private AppCommentMapper appCommentMapper;
+
+    @Autowired
+    private AiChatHistoryMapper aiChatHistoryMapper;
+
+    @Autowired
+    private ChatSessionMapper chatSessionMapper;
+
     @GetMapping("/{id}")
-    public Result<SysUser> getById(@PathVariable Long id) {
+    public Result<SysUser> getById(@PathVariable Long id, HttpServletRequest request) {
+        if (!RequestAuthUtil.isSelfOrAdmin(request, id)) {
+            return Result.error("No permission to view this user");
+        }
+
         SysUser user = sysUserService.getById(id);
-        if (user != null) {
-            user.setPasswordHash(null); // 隐私保护
-            return Result.success(user);
+        if (user == null) {
+            return Result.error("User not found");
         }
-        return Result.error("用户不存在");
-    }
-
-    // 更新用户信息 (修改头像、昵称)
-    @PutMapping("/update")
-    public Result<Boolean> update(@RequestBody SysUser user) {
-        // 1. 禁止修改密码
         user.setPasswordHash(null);
-        // 2. 禁止修改角色
-        user.setRole(null);
-        // 3. 禁止修改账号
-        user.setUsername(null);
-
-        // MyBatis-Plus 会自动更新前端传过来的非空字段 (比如 avatarUrl)
-        return Result.success(sysUserService.updateById(user));
+        return Result.success(user);
     }
 
-    // 新增用户
+    @PutMapping("/update")
+    public Result<Boolean> update(@RequestBody SysUser user, HttpServletRequest request) {
+        if (user.getId() == null) {
+            return Result.error("User ID is required");
+        }
+        if (!RequestAuthUtil.isSelfOrAdmin(request, user.getId())) {
+            return Result.error("No permission to update this user");
+        }
+
+        SysUser existing = sysUserService.getById(user.getId());
+        if (existing == null) {
+            return Result.error("User not found");
+        }
+
+        boolean isAdmin = RequestAuthUtil.isAdmin(request);
+        existing.setNickname(user.getNickname());
+        existing.setEmail(user.getEmail());
+        existing.setPhone(user.getPhone());
+        existing.setAvatarUrl(user.getAvatarUrl());
+        existing.setRegionCode(user.getRegionCode());
+
+        if (isAdmin) {
+            if (user.getStatus() != null) {
+                existing.setStatus(user.getStatus());
+            }
+            if (StrUtil.isNotBlank(user.getRole())) {
+                existing.setRole("admin".equals(user.getRole()) ? "admin" : "user");
+            }
+        }
+
+        existing.setPasswordHash(null);
+        return Result.success(sysUserService.updateById(existing));
+    }
+
     @PostMapping("/add")
-    public Result<Boolean> add(@RequestBody SysUser user) {
+    public Result<Boolean> add(@RequestBody SysUser user, HttpServletRequest request) {
+        if (!RequestAuthUtil.isAdmin(request)) {
+            return Result.error("Only administrators can add users");
+        }
         if (StrUtil.isBlank(user.getUsername())) {
-            return Result.error("用户名不能为空");
+            return Result.error("Username is required");
         }
 
-        // 检查用户名是否已存在
-        long count = sysUserService
-                .count(new LambdaQueryWrapper<SysUser>().eq(SysUser::getUsername, user.getUsername()));
+        long count = sysUserService.count(new LambdaQueryWrapper<SysUser>().eq(SysUser::getUsername, user.getUsername()));
         if (count > 0) {
-            return Result.error("用户名已存在");
+            return Result.error("Username already exists");
         }
 
-        // 默认密码为 123456
-        String defaultPasswordHash = DigestUtils.md5DigestAsHex("123456".getBytes());
-        user.setPasswordHash(defaultPasswordHash);
-
+        user.setRole("admin".equals(user.getRole()) ? "admin" : "user");
+        if (user.getStatus() == null) {
+            user.setStatus(1);
+        }
+        user.setPasswordHash(DigestUtils.md5DigestAsHex("123456".getBytes(StandardCharsets.UTF_8)));
         return Result.success(sysUserService.save(user));
     }
 
-    // 分页获取用户列表
     @GetMapping("/page")
-    public Result<Page<SysUser>> page(
-            @RequestParam(defaultValue = "1") Integer pageNum,
-            @RequestParam(defaultValue = "10") Integer pageSize,
-            @RequestParam(required = false) String keyword) {
-        
+    public Result<Page<SysUser>> page(@RequestParam(defaultValue = "1") Integer pageNum,
+                                      @RequestParam(defaultValue = "10") Integer pageSize,
+                                      @RequestParam(required = false) String keyword,
+                                      HttpServletRequest request) {
+        if (!RequestAuthUtil.isAdmin(request)) {
+            return Result.error("Only administrators can view user list");
+        }
+
         Page<SysUser> page = new Page<>(pageNum, pageSize);
-        
-        // 构建查询条件
-        LambdaQueryWrapper<SysUser> wrapper = null;
+        LambdaQueryWrapper<SysUser> wrapper;
         if (StrUtil.isNotBlank(keyword)) {
             wrapper = new LambdaQueryWrapper<SysUser>()
                     .like(SysUser::getUsername, keyword)
@@ -89,57 +141,69 @@ public class SysUserController {
         } else {
             wrapper = new LambdaQueryWrapper<>();
         }
-        
-        // 执行分页查询
+
         Page<SysUser> resultPage = sysUserService.page(page, wrapper);
-        
-        // 去除密码信息
-        resultPage.getRecords().forEach(user -> user.setPasswordHash(null));
-        
+        resultPage.getRecords().forEach(item -> item.setPasswordHash(null));
         return Result.success(resultPage);
     }
 
-    // 删除用户
     @DeleteMapping("/delete/{id}")
-    public Result<Boolean> delete(@PathVariable Long id) {
+    @Transactional(rollbackFor = Exception.class)
+    public Result<Boolean> delete(@PathVariable Long id, HttpServletRequest request) {
+        if (!RequestAuthUtil.isAdmin(request)) {
+            return Result.error("Only administrators can delete users");
+        }
+        if (RequestAuthUtil.isSelf(request, id)) {
+            return Result.error("Cannot delete current login user");
+        }
+
+        sysOperationLogMapper.delete(new LambdaQueryWrapper<SysOperationLog>()
+                .eq(SysOperationLog::getUserId, id));
+        appFavoriteMapper.delete(new LambdaQueryWrapper<AppFavorite>()
+                .eq(AppFavorite::getUserId, id));
+        appCommentMapper.delete(new LambdaQueryWrapper<AppComment>()
+                .eq(AppComment::getUserId, id));
+        aiChatHistoryMapper.delete(new LambdaQueryWrapper<AiChatHistory>()
+                .eq(AiChatHistory::getUserId, id));
+        chatSessionMapper.delete(new LambdaQueryWrapper<ChatSession>()
+                .eq(ChatSession::getUserId, id));
         return Result.success(sysUserService.removeById(id));
     }
 
-    // 重置密码为 123456
     @PutMapping("/reset-password/{id}")
-    public Result<Boolean> resetPassword(@PathVariable Long id) {
+    public Result<Boolean> resetPassword(@PathVariable Long id, HttpServletRequest request) {
+        if (!RequestAuthUtil.isAdmin(request)) {
+            return Result.error("Only administrators can reset passwords");
+        }
+
         SysUser user = sysUserService.getById(id);
         if (user == null) {
-            return Result.error("用户不存在");
+            return Result.error("User not found");
         }
-        String defaultPasswordHash = DigestUtils.md5DigestAsHex("123456".getBytes());
-        user.setPasswordHash(defaultPasswordHash);
+        user.setPasswordHash(DigestUtils.md5DigestAsHex("123456".getBytes(StandardCharsets.UTF_8)));
         return Result.success(sysUserService.updateById(user));
     }
 
     @PostMapping("/change-password")
-    public Result<Boolean> changePassword(@RequestBody Map<String, String> params) {
+    public Result<Boolean> changePassword(@RequestBody Map<String, String> params, HttpServletRequest request) {
         Long id = Long.parseLong(params.get("id"));
+        if (!RequestAuthUtil.isSelf(request, id)) {
+            return Result.error("Only current user can change own password");
+        }
+
         String oldPassword = params.get("oldPassword");
         String newPassword = params.get("newPassword");
-
-        // 验证旧密码
         SysUser user = sysUserService.getById(id);
         if (user == null) {
-            return Result.error("用户不存在");
+            return Result.error("User not found");
         }
 
-        // 加密旧密码并验证
-        String md5OldPassword = DigestUtils.md5DigestAsHex(oldPassword.getBytes());
+        String md5OldPassword = DigestUtils.md5DigestAsHex(oldPassword.getBytes(StandardCharsets.UTF_8));
         if (!md5OldPassword.equals(user.getPasswordHash())) {
-            return Result.error("原密码错误");
+            return Result.error("Current password is incorrect");
         }
 
-        // 加密新密码并更新
-        String md5NewPassword = DigestUtils.md5DigestAsHex(newPassword.getBytes());
-        user.setPasswordHash(md5NewPassword);
-        boolean success = sysUserService.updateById(user);
-
-        return Result.success(success);
+        user.setPasswordHash(DigestUtils.md5DigestAsHex(newPassword.getBytes(StandardCharsets.UTF_8)));
+        return Result.success(sysUserService.updateById(user));
     }
 }

@@ -1,359 +1,377 @@
 <template>
-    <div class="layout-container">
-        <div class="layout-sidebar" :class="{ 'collapsed': isCollapse }">
-            <div class="logo">
-                <div class="logo-icon">
-                    <span class="logo-chinese">非</span>
-                </div>
-                <span v-if="!isCollapse" class="logo-text">非遗推广系统</span>
-            </div>
-            <el-menu active-text-color="#ffd04b" background-color="#304156" text-color="#fff"
-                :default-active="activeMenu" class="el-menu-vertical" :collapse="isCollapse" @select="handleMenuSelect">
-                <el-menu-item index="home">
-                    <el-icon>
-                        <DataLine />
-                    </el-icon>
-                    <span>{{ userInfo.role === 'admin' ? '非遗项目管理' : '非遗数字展馆' }}</span>
-                </el-menu-item>
+  <div class="layout-container">
+    <aside class="layout-sidebar" :class="{ collapsed: isCollapse }">
+      <div class="logo">
+        <div class="logo-icon">非遗</div>
+        <div v-if="!isCollapse" class="logo-text">
+          <div class="logo-title">非遗传承平台</div>
+          <div class="logo-subtitle">ICH Promotion</div>
+        </div>
+      </div>
 
-                <el-menu-item index="favorites" v-if="userInfo.role !== 'admin'">
-                    <el-icon>
-                        <Star />
-                    </el-icon>
-                    <span>我的收藏</span>
-                </el-menu-item>
+      <el-menu
+        :default-active="activeMenu"
+        class="el-menu-vertical"
+        background-color="#304156"
+        text-color="#fff"
+        active-text-color="#ffd04b"
+        :collapse="isCollapse"
+        @select="handleMenuSelect"
+      >
+        <el-menu-item v-for="item in menuItems" :key="item.index" :index="item.index">
+          <el-icon>
+            <component :is="item.icon" />
+          </el-icon>
+          <template #title>
+            <span>{{ item.title }}</span>
+            <el-badge
+              v-if="item.index === '/audit-center' && pendingAuditCount > 0"
+              :value="pendingAuditCount"
+              class="menu-badge"
+              type="danger"
+            />
+          </template>
+        </el-menu-item>
+      </el-menu>
+    </aside>
 
-                <el-menu-item index="hot-ranking">
-                    <el-icon>
-                        <TrendCharts />
-                    </el-icon>
-                    <span>热度排行</span>
-                </el-menu-item>
+    <main class="layout-main">
+      <header class="layout-header">
+        <div class="header-left">
+          <el-icon class="collapse-btn" @click="isCollapse = !isCollapse">
+            <Fold v-if="!isCollapse" />
+            <Expand v-else />
+          </el-icon>
 
-                <el-menu-item index="chat">
-                    <el-icon>
-                        <ChatLineRound />
-                    </el-icon>
-                    <span>AI 聊天</span>
-                </el-menu-item>
-
-                <!-- ===== 新增：地区分类菜单项 ===== -->
-                <el-menu-item index="region-category">
-                    <el-icon>
-                        <Location />
-                    </el-icon>
-                    <span>地区分类</span>
-                </el-menu-item>
-                <!-- ================================= -->
-
-                <!-- 审核台：仅管理员可见 -->
-                <el-menu-item index="audit-center" v-if="userInfo.role === 'admin'" class="audit-menu-item">
-                    <el-icon><Document /></el-icon>
-                    <template #title>
-                        <span>审核台</span>
-                        <el-badge v-if="pendingAuditCount > 0" :value="pendingAuditCount" class="audit-badge" type="danger" />
-                    </template>
-                </el-menu-item>
-
-                <el-menu-item index="inheritor" v-if="userInfo.role === 'admin'">
-                    <el-icon>
-                        <User />
-                    </el-icon>
-                    <span>传承人管理</span>
-                </el-menu-item>
-
-                <el-menu-item index="user" v-if="userInfo.role === 'admin'">
-                    <el-icon>
-                        <Setting />
-                    </el-icon>
-                    <span>用户管理</span>
-                </el-menu-item>
-            </el-menu>
+          <el-breadcrumb separator="/">
+            <el-breadcrumb-item>首页</el-breadcrumb-item>
+            <el-breadcrumb-item v-for="item in breadcrumbs" :key="item.path">
+              {{ item.title }}
+            </el-breadcrumb-item>
+          </el-breadcrumb>
         </div>
 
-        <div class="layout-main">
-            <div class="layout-header">
-                <div class="header-left">
-                    <el-icon class="collapse-btn" @click="isCollapse = !isCollapse">
-                        <Fold v-if="!isCollapse" />
-                        <Expand v-else />
-                    </el-icon>
-                    <el-breadcrumb separator="/">
-                        <el-breadcrumb-item :to="{ path: '/' }">首页</el-breadcrumb-item>
-                        <el-breadcrumb-item v-for="(item, index) in breadcrumbs" :key="index">
-                            {{ item.title }}
-                        </el-breadcrumb-item>
-                    </el-breadcrumb>
-                </div>
-
-                <div class="header-right">
-                    <el-popover placement="bottom" :width="300" trigger="click">
-                        <template #reference>
-                            <div style="margin-right: 20px; cursor: pointer; position: relative;">
-                                <el-icon size="20">
-                                    <Bell />
-                                </el-icon>
-                            </div>
-                        </template>
-                        <div style="text-align: center; color: #999; padding: 20px;">暂无新消息</div>
-                    </el-popover>
-
-                    <el-dropdown @command="handleCommand">
-                        <div style="display: flex; align-items: center; cursor: pointer; outline: none;">
-                            <el-avatar :size="30" :src="getAvatarUrl" />
-                            <span style="margin-left: 8px; margin-right: 5px;">{{ userInfo.nickname || userInfo.username
-                                }}</span>
-                            <el-tag size="small" effect="dark" :type="userInfo.role === 'admin' ? 'danger' : 'success'">
-                                {{ userInfo.role === 'admin' ? '管理员' : '普通用户' }}
-                            </el-tag>
-                            <el-icon class="el-icon--right">
-                                <ArrowDown />
-                            </el-icon>
-                        </div>
-                        <template #dropdown>
-                            <el-dropdown-menu>
-                                <el-dropdown-item command="profile">个人中心</el-dropdown-item>
-                                <el-dropdown-item command="logout" divided>退出登录</el-dropdown-item>
-                            </el-dropdown-menu>
-                        </template>
-                    </el-dropdown>
-                </div>
+        <div class="header-right">
+          <el-popover placement="bottom" :width="220" trigger="click">
+            <template #reference>
+              <div class="notice-trigger">
+                <el-badge :value="pendingAuditCount" :hidden="pendingAuditCount === 0">
+                  <el-icon size="20"><Bell /></el-icon>
+                </el-badge>
+              </div>
+            </template>
+            <div class="notice-content">
+              <div v-if="userInfo.role === 'admin'">
+                当前待审核项目 {{ pendingAuditCount }} 个。
+              </div>
+              <div v-else>
+                暂无新的系统通知。
+              </div>
             </div>
+          </el-popover>
 
-            <div class="layout-content">
-                <router-view />
+          <el-dropdown @command="handleCommand">
+            <div class="user-trigger">
+              <el-avatar :size="32" :src="avatarUrl" />
+              <div class="user-meta">
+                <span class="user-name">{{ userInfo.nickname || userInfo.username || '未登录' }}</span>
+                <span class="user-role">{{ userInfo.role === 'admin' ? '管理员' : '普通用户' }}</span>
+              </div>
+              <el-icon><ArrowDown /></el-icon>
             </div>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="profile">个人中心</el-dropdown-item>
+                <el-dropdown-item command="logout" divided>退出登录</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
         </div>
-    </div>
+      </header>
+
+      <section class="layout-content">
+        <router-view />
+      </section>
+    </main>
+
+    <ChatAssistant />
+  </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
-import { DataLine, User, Fold, Expand, ArrowDown, Setting, Bell, Star, TrendCharts, Location, Document } from '@element-plus/icons-vue'
+import { computed, onMounted, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import {
+  ArrowDown,
+  Bell,
+  ChatLineRound,
+  DataLine,
+  Document,
+  Expand,
+  Fold,
+  Location,
+  Setting,
+  Star,
+  TrendCharts,
+  User,
+} from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import request from '@/utils/request'
-import ChatAssistant from '../components/ChatAssistant.vue' // 引入
+import { DEFAULT_AVATAR_URL, toServerUrl } from '@/utils/url'
+import ChatAssistant from '@/components/ChatAssistant.vue'
+
 const router = useRouter()
 const route = useRoute()
 const isCollapse = ref(false)
+const pendingAuditCount = ref(0)
 
 const userInfo = ref<any>({
-    role: 'user',
-    nickname: '',
-    username: '',
-    avatarUrl: ''
+  role: 'user',
+  username: '',
+  nickname: '',
+  avatarUrl: '',
 })
 
-// 计算头像URL，确保相对路径也能正确显示
-const getAvatarUrl = computed(() => {
-    if (userInfo.value.avatarUrl) {
-        return userInfo.value.avatarUrl.startsWith('http') ? userInfo.value.avatarUrl : `http://localhost:8080${userInfo.value.avatarUrl}`;
-    }
-    return 'https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png';
-});
+const menuItems = computed(() => {
+  const items = [
+    { index: '/home', title: '项目首页', icon: DataLine },
+    { index: '/favorites', title: '我的收藏', icon: Star, roles: ['user'] },
+    { index: '/hot-ranking', title: '热门排行', icon: TrendCharts },
+    { index: '/chat', title: 'AI 助手', icon: ChatLineRound },
+    { index: '/region-category', title: '地区分类', icon: Location },
+    { index: '/audit-center', title: '审核中心', icon: Document, roles: ['admin'] },
+    { index: '/inheritor', title: '传承人管理', icon: User, roles: ['admin'] },
+    { index: '/user', title: '用户管理', icon: Setting, roles: ['admin'] },
+  ]
+
+  return items.filter((item) => !item.roles || item.roles.includes(userInfo.value.role))
+})
 
 const activeMenu = computed(() => route.path)
 
+const breadcrumbMap: Record<string, string> = {
+  home: '项目首页',
+  inheritor: '传承人管理',
+  user: '用户管理',
+  profile: '个人中心',
+  favorites: '我的收藏',
+  'hot-ranking': '热门排行',
+  chat: 'AI 助手',
+  'audit-center': '审核中心',
+  'region-category': '地区分类',
+  Person: '个人中心',
+}
+
 const breadcrumbs = computed(() => {
-    let matched = route.matched.filter(item => item.name)
-    const nameMap: any = {
-        'home': '项目管理',
-        'inheritor': '传承人管理',
-        'user': '用户管理',
-        'profile': '个人中心'
-    }
-    return matched.map(item => {
-        return {
-            path: item.path,
-            title: nameMap[item.name as string] || item.name
-        }
-    })
+  return route.matched
+    .filter((item) => item.name && item.name !== 'login')
+    .map((item) => ({
+      path: item.path,
+      title: breadcrumbMap[String(item.name)] || String(item.name),
+    }))
 })
 
-const handleCommand = (command: string) => {
-    if (command === 'logout') {
-        ElMessageBox.confirm('确定退出登录吗？', '提示', { type: 'warning' }).then(() => {
-            sessionStorage.removeItem('user')
-            router.push('/login')
-            ElMessage.success('退出成功')
-        })
-    } else if (command === 'profile') {
-        router.push('/profile')
-    }
-}
+const avatarUrl = computed(() => {
+  if (userInfo.value.avatarUrl) {
+    return toServerUrl(userInfo.value.avatarUrl)
+  }
+  return DEFAULT_AVATAR_URL
+})
 
-// 处理菜单选择
-const handleMenuSelect = (index: string) => {
-    router.push(`/${index}`)
-}
+const loadUserInfo = () => {
+  const userStr = sessionStorage.getItem('user')
+  if (!userStr) {
+    return
+  }
 
-const pendingAuditCount = ref(0)
+  try {
+    userInfo.value = JSON.parse(userStr)
+  } catch (error) {
+    console.error('Failed to parse user info:', error)
+  }
+}
 
 const fetchPendingCount = async () => {
-    if (userInfo.value.role !== 'admin') return
+  if (userInfo.value.role !== 'admin') {
+    pendingAuditCount.value = 0
+    return
+  }
+
+  try {
+    const res = await request.get('/projects/page', {
+      params: { pageNum: 1, pageSize: 1, auditStatus: 0 },
+    })
+    pendingAuditCount.value = res.data.data?.total || 0
+  } catch {
+    pendingAuditCount.value = 0
+  }
+}
+
+const handleMenuSelect = (index: string) => {
+  router.push(index)
+}
+
+const handleCommand = async (command: string) => {
+  if (command === 'profile') {
+    router.push('/profile')
+    return
+  }
+
+  if (command === 'logout') {
     try {
-        const res = await request.get('/projects/page', { params: { pageNum: 1, pageSize: 1, auditStatus: 0 } })
-        pendingAuditCount.value = res.data.data?.total || 0
-    } catch {}
-}
-
-onMounted(() => {
-    loadUserInfo()
-    // 延迟调用，等待 userInfo 加载完成
-    setTimeout(() => fetchPendingCount(), 500)
-})
-
-// 加载用户信息
-const loadUserInfo = () => {
-    const userStr = sessionStorage.getItem('user')
-    if (userStr) {
-        try {
-            userInfo.value = JSON.parse(userStr)
-        } catch (e) {
-            console.error('用户信息解析失败', e)
-        }
+      await ElMessageBox.confirm('确认退出当前账号吗？', '退出登录', { type: 'warning' })
+      sessionStorage.removeItem('user')
+      sessionStorage.removeItem('token')
+      sessionStorage.removeItem('tokenExpires')
+      router.push('/login')
+      ElMessage.success('已退出登录')
+    } catch {
+      return
     }
+  }
 }
+
+onMounted(async () => {
+  loadUserInfo()
+  await fetchPendingCount()
+})
 </script>
 
 <style scoped>
 .layout-container {
-    display: flex;
-    height: 100vh;
-    width: 100%;
+  display: flex;
+  min-height: 100vh;
+  width: 100%;
 }
 
 .layout-sidebar {
-    background-color: #304156;
-    height: 100%;
-    transition: width 0.3s;
-    display: flex;
-    flex-direction: column;
-    width: 220px;
+  width: 220px;
+  background: #304156;
+  color: #fff;
+  transition: width 0.3s ease;
+  display: flex;
+  flex-direction: column;
 }
 
 .layout-sidebar.collapsed {
-    width: 64px;
+  width: 64px;
 }
 
 .logo {
-    height: 50px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: white;
-    font-weight: bold;
-    background-color: #2b3a4d;
-    gap: 10px;
-    overflow: hidden;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+  background: #243243;
+  overflow: hidden;
 }
 
 .logo-icon {
-    width: 38px;
-    height: 38px;
-    background: linear-gradient(135deg, #c41e3a 0%, #e6a23c 100%);
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-    box-shadow: 0 4px 16px rgba(196, 30, 58, 0.4);
-    border: 2px solid rgba(255, 255, 255, 0.3);
-    position: relative;
-    overflow: hidden;
-    transition: all 0.3s ease;
-}
-
-.logo-icon:hover {
-    transform: scale(1.1);
-    box-shadow: 0 6px 20px rgba(196, 30, 58, 0.6);
-}
-
-.logo-icon::before {
-    content: '';
-    position: absolute;
-    top: -50%;
-    left: -50%;
-    width: 200%;
-    height: 200%;
-    background: linear-gradient(45deg, transparent, rgba(255, 255, 255, 0.2), transparent);
-    transform: rotate(45deg);
-    animation: shine 3s infinite;
-}
-
-@keyframes shine {
-    0% {
-        transform: translateX(-100%) rotate(45deg);
-    }
-
-    100% {
-        transform: translateX(100%) rotate(45deg);
-    }
-}
-
-.logo-chinese {
-    font-size: 24px;
-    font-weight: bold;
-    color: #fff;
-    font-family: 'STZhongsong', 'Microsoft YaHei', serif;
-    text-shadow: 1px 1px 4px rgba(0, 0, 0, 0.5);
-    letter-spacing: 2px;
-    position: relative;
-    z-index: 1;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #c41e3a 0%, #e6a23c 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: 700;
+  flex-shrink: 0;
 }
 
 .logo-text {
-    font-size: 16px;
-    font-family: 'Microsoft YaHei', serif;
-    letter-spacing: 1px;
-    white-space: nowrap;
+  min-width: 0;
+}
+
+.logo-title {
+  font-size: 15px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.logo-subtitle {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.72);
 }
 
 .el-menu-vertical {
-    border-right: none;
-    flex: 1;
+  border-right: none;
+  flex: 1;
+}
+
+.menu-badge {
+  margin-left: 8px;
 }
 
 .layout-main {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    background-color: #f0f2f5;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: #f5f7fa;
+  min-width: 0;
 }
 
-/* 头部样式 */
 .layout-header {
-    height: 50px;
-    background: white;
-    border-bottom: 1px solid #dcdfe6;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0 20px;
+  height: 64px;
+  background: #fff;
+  border-bottom: 1px solid #ebeef5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
 }
 
-.header-left {
-    display: flex;
-    align-items: center;
-    gap: 15px;
-}
-
-/* ✨✨ 修复点：这里必须加上 flex 布局 */
+.header-left,
 .header-right {
-    display: flex;
-    align-items: center;
+  display: flex;
+  align-items: center;
+  gap: 16px;
 }
 
 .collapse-btn {
-    font-size: 20px;
-    cursor: pointer;
+  font-size: 20px;
+  cursor: pointer;
+}
+
+.notice-trigger {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+}
+
+.notice-content {
+  color: #606266;
+  line-height: 1.6;
+}
+
+.user-trigger {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  outline: none;
+}
+
+.user-meta {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+
+.user-name {
+  font-size: 14px;
+  color: #303133;
+}
+
+.user-role {
+  font-size: 12px;
+  color: #909399;
 }
 
 .layout-content {
-    flex: 1;
-    padding: 20px;
-    overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
 }
 </style>

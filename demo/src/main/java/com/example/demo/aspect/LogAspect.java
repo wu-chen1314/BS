@@ -1,8 +1,9 @@
 package com.example.demo.aspect;
 
+import com.example.demo.common.result.Result;
 import com.example.demo.entity.SysOperationLog;
 import com.example.demo.mapper.SysOperationLogMapper;
-import javax.servlet.http.HttpServletRequest;
+import com.example.demo.util.RequestAuthUtil;
 import org.aspectj.lang.JoinPoint;
 import org.aspectj.lang.annotation.AfterReturning;
 import org.aspectj.lang.annotation.Aspect;
@@ -12,6 +13,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
+import javax.servlet.http.HttpServletRequest;
 import java.time.LocalDateTime;
 
 @Aspect
@@ -28,47 +30,64 @@ public class LogAspect {
     @AfterReturning(pointcut = "projectLog()", returning = "result")
     public void doAfterReturning(JoinPoint joinPoint, Object result) {
         try {
-            String methodName = joinPoint.getSignature().getName();
-
-            String action = "";
-            if (methodName.startsWith("add"))
-                action = "新增项目";
-            else if (methodName.startsWith("update"))
-                action = "修改项目";
-            else if (methodName.startsWith("delete"))
-                action = "删除项目";
-            else
+            String action = resolveAction(joinPoint.getSignature().getName());
+            if (action == null || !isSuccessfulResult(result)) {
                 return;
+            }
 
-            ServletRequestAttributes attributes = (ServletRequestAttributes) RequestContextHolder
-                    .getRequestAttributes();
+            ServletRequestAttributes attributes = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
+            if (attributes == null) {
+                return;
+            }
+
             HttpServletRequest request = attributes.getRequest();
+            Long userId = RequestAuthUtil.getCurrentUserId(request);
+            if (userId == null || userId <= 0) {
+                return;
+            }
 
             SysOperationLog log = new SysOperationLog();
+            log.setUserId(userId);
             log.setAction(action);
             log.setTargetType("IchProject");
             log.setIp(request.getRemoteAddr());
             log.setCreatedAt(LocalDateTime.now());
-            log.setDetail("执行方法：" + methodName);
-
-            // ✅ Bug3修复：从请求头读取真实用户ID，而不是硬编码为 1
-            // 前端登录后将 userId 存入 localStorage，每次请求通过 X-User-Id 头传递
-            String userIdHeader = request.getHeader("X-User-Id");
-            if (userIdHeader != null && !userIdHeader.isEmpty()) {
-                try {
-                    log.setUserId(Long.parseLong(userIdHeader));
-                } catch (NumberFormatException ignored) {
-                    log.setUserId(-1L);
-                }
-            } else {
-                log.setUserId(-1L); // 未携带头时标记为未知
-            }
-
+            log.setDetail("method=" + joinPoint.getSignature().getName());
             logMapper.insert(log);
-            System.out.println("✅ [操作日志] 已记录：" + action + "，操作用户ID：" + log.getUserId());
-
-        } catch (Exception e) {
-            e.printStackTrace();
+        } catch (Exception ignored) {
         }
+    }
+
+    private boolean isSuccessfulResult(Object result) {
+        if (!(result instanceof Result)) {
+            return false;
+        }
+
+        Result<?> apiResult = (Result<?>) result;
+        if (!Integer.valueOf(200).equals(apiResult.getCode())) {
+            return false;
+        }
+
+        Object data = apiResult.getData();
+        return !(data instanceof Boolean) || Boolean.TRUE.equals(data);
+    }
+
+    private String resolveAction(String methodName) {
+        if (methodName == null) {
+            return null;
+        }
+        if (methodName.startsWith("add")) {
+            return "ADD_PROJECT";
+        }
+        if (methodName.startsWith("update")) {
+            return "UPDATE_PROJECT";
+        }
+        if (methodName.startsWith("delete")) {
+            return "DELETE_PROJECT";
+        }
+        if (methodName.startsWith("audit")) {
+            return "AUDIT_PROJECT";
+        }
+        return null;
     }
 }

@@ -8,6 +8,7 @@ import com.example.demo.mapper.SysUserMapper;
 import com.example.demo.service.SysUserService;
 import org.springframework.stereotype.Service;
 import org.springframework.util.DigestUtils;
+import org.springframework.util.StringUtils;
 
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
@@ -18,96 +19,92 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
 
     @Override
     public Result<SysUser> register(SysUser user) {
-        // 检查用户名是否存在
-        QueryWrapper<SysUser> query = new QueryWrapper<>();
-        query.eq("username", user.getUsername());
-        SysUser existUser = this.getOne(query);
-        
-        if (existUser != null) {
-            return Result.error("用户名已存在");
+        if (user == null || !StringUtils.hasText(user.getUsername()) || !StringUtils.hasText(user.getPasswordHash())) {
+            return Result.error("Username and password are required");
         }
-        
-        // 加密密码
-        String passwordHash = DigestUtils.md5DigestAsHex(user.getPasswordHash().getBytes(StandardCharsets.UTF_8));
-        user.setPasswordHash(passwordHash);
-        
-        // 设置默认值
+        if (!StringUtils.hasText(user.getEmail())) {
+            return Result.error("Email is required");
+        }
+
+        QueryWrapper<SysUser> duplicateQuery = new QueryWrapper<>();
+        duplicateQuery.eq("username", user.getUsername()).or().eq("email", user.getEmail());
+        SysUser existUser = this.getOne(duplicateQuery);
+        if (existUser != null) {
+            if (user.getUsername().equals(existUser.getUsername())) {
+                return Result.error("Username already exists");
+            }
+            return Result.error("Email is already in use");
+        }
+
+        user.setPasswordHash(DigestUtils.md5DigestAsHex(user.getPasswordHash().getBytes(StandardCharsets.UTF_8)));
         user.setRole("user");
         user.setStatus(1);
         user.setCreatedAt(LocalDateTime.now());
         user.setUpdatedAt(LocalDateTime.now());
-        
-        // 保存用户
+
         if (this.save(user)) {
-            user.setPasswordHash(null); // 不返回密码
+            user.setPasswordHash(null);
             return Result.success(user);
-        } else {
-            return Result.error("注册失败");
         }
+        return Result.error("Registration failed");
     }
 
     @Override
     public Result<SysUser> login(SysUser user) {
-        // 验证输入参数
         if (user.getUsername() == null || user.getPasswordHash() == null) {
-            return Result.error("用户名或密码不能为空");
+            return Result.error("Username and password are required");
         }
-        
-        // 查询用户
+
         QueryWrapper<SysUser> query = new QueryWrapper<>();
         query.eq("username", user.getUsername());
         SysUser existUser = this.getOne(query);
-        
+
         if (existUser == null) {
-            return Result.error("用户名或密码错误");
+            return Result.error("Invalid username or password");
         }
-        
-        // 验证密码
+
         String passwordHash = DigestUtils.md5DigestAsHex(user.getPasswordHash().getBytes(StandardCharsets.UTF_8));
         if (!existUser.getPasswordHash().equals(passwordHash)) {
-            return Result.error("用户名或密码错误");
+            return Result.error("Invalid username or password");
         }
-        
-        // 检查用户状态
+
         if (existUser.getStatus() == 0) {
-            return Result.error("用户已被禁用");
+            return Result.error("User is disabled");
         }
-        
-        // 更新最后登录时间
+
         existUser.setLastLoginAt(LocalDateTime.now());
         this.updateById(existUser);
-        
-        // 不返回密码
         existUser.setPasswordHash(null);
         return Result.success(existUser);
     }
 
     @Override
     public Result<Boolean> resetPassword(Map<String, String> params) {
+        String username = params.get("username");
         String email = params.get("email");
-        String code = params.get("code");
         String newPassword = params.get("newPassword");
-        
-        // 查询用户
+
+        if (!StringUtils.hasText(username) || !StringUtils.hasText(email) || !StringUtils.hasText(newPassword)) {
+            return Result.error("Username, email and new password are required");
+        }
+
         QueryWrapper<SysUser> query = new QueryWrapper<>();
         query.eq("email", email);
         SysUser user = this.getOne(query);
-        
+
         if (user == null) {
-            return Result.error("用户不存在");
+            return Result.error("User not found");
         }
-        
-        // TODO: 验证验证码
-        
-        // 更新密码
-        String passwordHash = DigestUtils.md5DigestAsHex(newPassword.getBytes(StandardCharsets.UTF_8));
-        user.setPasswordHash(passwordHash);
+        if (!username.equals(user.getUsername())) {
+            return Result.error("Username and email do not match");
+        }
+
+        user.setPasswordHash(DigestUtils.md5DigestAsHex(newPassword.getBytes(StandardCharsets.UTF_8)));
         user.setUpdatedAt(LocalDateTime.now());
-        
+
         if (this.updateById(user)) {
             return Result.success(true);
-        } else {
-            return Result.error("重置密码失败");
         }
+        return Result.error("Password reset failed");
     }
 }

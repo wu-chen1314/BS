@@ -9,12 +9,25 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.example.demo.common.result.Result;
 import com.example.demo.entity.IchInheritor;
 import com.example.demo.entity.IchProject;
+import com.example.demo.model.dto.IchProjectDTO;
+import com.example.demo.model.vo.IchProjectVO;
 import com.example.demo.service.IchInheritorService;
 import com.example.demo.service.IchProjectService;
+import com.example.demo.util.RequestAuthUtil;
+import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.RedisConnectionFailureException;
+import org.springframework.data.redis.core.RedisCallback;
+import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import javax.servlet.http.HttpServletRequest;
+import java.nio.charset.StandardCharsets;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
@@ -24,42 +37,34 @@ import java.util.stream.Collectors;
 @RequestMapping("/api/projects")
 public class IchProjectController {
 
+    private static final String PROJECT_PAGE_CACHE_PREFIX = "ICH:PROJECT:PAGE:";
+    private static final String ECHARTS_DATA_KEY = "ICH:STATISTICS:HOME_DATA";
+
     @Autowired
     private IchProjectService projectService;
 
     @Autowired
     private IchInheritorService inheritorService;
 
-    @Autowired
+    @Autowired(required = false)
     private StringRedisTemplate stringRedisTemplate;
 
-    private static final String PROJECT_PAGE_CACHE_PREFIX = "ICH:PROJECT:PAGE:";
-    private static final String ECHARTS_DATA_KEY = "ICH:STATISTICS:HOME_DATA";
-
-    // ================== 查询操作 (高级缓存架构) ==================
-
     @GetMapping("/page")
-    public Result<Page<com.example.demo.model.vo.IchProjectVO>> page(@RequestParam(defaultValue = "1") Integer pageNum,
-            @RequestParam(defaultValue = "10") Integer pageSize,
-            @RequestParam(required = false) String name,
-            @RequestParam(required = false) String protectLevel,
-            @RequestParam(required = false) Integer auditStatus) {
+    public Result<Page<IchProjectVO>> page(@RequestParam(defaultValue = "1") Integer pageNum,
+                                           @RequestParam(defaultValue = "10") Integer pageSize,
+                                           @RequestParam(required = false) String name,
+                                           @RequestParam(required = false) String protectLevel,
+                                           @RequestParam(required = false) Integer auditStatus) {
+        String queryKey = PROJECT_PAGE_CACHE_PREFIX + pageNum + "_" + pageSize + "_"
+                + (StrUtil.isBlank(name) ? "all" : name) + "_"
+                + (StrUtil.isBlank(protectLevel) ? "all" : protectLevel) + "_"
+                + (auditStatus == null ? "all" : auditStatus);
 
-        String queryKey = PROJECT_PAGE_CACHE_PREFIX + pageNum + "_" + pageSize + "_" +
-                (StrUtil.isBlank(name) ? "all" : name) + "_" +
-                (StrUtil.isBlank(protectLevel) ? "all" : protectLevel) + "_" +
-                (auditStatus == null ? "all" : auditStatus);
-
-        String cacheData = stringRedisTemplate.opsForValue().get(queryKey);
-        if (StrUtil.isNotBlank(cacheData)) {
-            System.out.println("【非遗项目列表】🚀 命中 Redis 缓存");
-            Page<com.example.demo.model.vo.IchProjectVO> cachedPage = JSONUtil.toBean(cacheData,
-                    new TypeReference<Page<com.example.demo.model.vo.IchProjectVO>>() {
-                    }, false);
+        Page<IchProjectVO> cachedPage = getCachedPage(queryKey);
+        if (cachedPage != null) {
             return Result.success(cachedPage);
         }
 
-        System.out.println("【非遗项目列表】🐌 缓存未命中，查询 MySQL 数据库...");
         QueryWrapper<IchProject> query = new QueryWrapper<>();
         if (StrUtil.isNotBlank(name)) {
             query.like("p.name", name);
@@ -73,84 +78,111 @@ public class IchProjectController {
         query.orderByDesc("p.id");
 
         Page<IchProject> pageResult = projectService.pageWithViewCount(new Page<>(pageNum, pageSize), query);
-        Page<com.example.demo.model.vo.IchProjectVO> voPage = new Page<>(pageResult.getCurrent(), pageResult.getSize(),
-                pageResult.getTotal());
+        Page<IchProjectVO> voPage = new Page<>(pageResult.getCurrent(), pageResult.getSize(), pageResult.getTotal());
 
         if (pageResult.getRecords() == null || pageResult.getRecords().isEmpty()) {
-            System.out.println("【非遗项目列表】🛡️ 触发防缓存穿透，缓存空对象，TTL 1分钟");
-            stringRedisTemplate.opsForValue().set(queryKey, JSONUtil.toJsonStr(voPage), 1, TimeUnit.MINUTES);
+            cachePage(queryKey, voPage, 1);
             return Result.success(voPage);
         }
 
-        List<com.example.demo.model.vo.IchProjectVO> voList = pageResult.getRecords().stream().map(project -> {
-            com.example.demo.model.vo.IchProjectVO vo = new com.example.demo.model.vo.IchProjectVO();
-            org.springframework.beans.BeanUtils.copyProperties(project, vo);
-            List<IchInheritor> inheritors = inheritorService.list(
-                    new QueryWrapper<IchInheritor>().eq("project_id", project.getId()));
-            String names = inheritors.stream().map(IchInheritor::getName).collect(Collectors.joining(", "));
-            vo.setInheritorNames(names);
-            List<Long> ids = inheritors.stream().map(IchInheritor::getId).collect(Collectors.toList());
-            vo.setInheritorIds(ids);
+        List<IchProjectVO> voList = pageResult.getRecords().stream().map(project -> {
+            IchProjectVO vo = new IchProjectVO();
+            BeanUtils.copyProperties(project, vo);
+            List<IchInheritor> inheritors = inheritorService.list(new QueryWrapper<IchInheritor>().eq("project_id", project.getId()));
+            vo.setInheritorNames(inheritors.stream().map(IchInheritor::getName).collect(Collectors.joining(", ")));
+            vo.setInheritorIds(inheritors.stream().map(IchInheritor::getId).collect(Collectors.toList()));
             return vo;
         }).collect(Collectors.toList());
 
         voPage.setRecords(voList);
-
-        long randomMinutes = RandomUtil.randomInt(1, 6);
-        stringRedisTemplate.opsForValue().set(queryKey, JSONUtil.toJsonStr(voPage), 30 + randomMinutes,
-                TimeUnit.MINUTES);
-
+        cachePage(queryKey, voPage, 30 + RandomUtil.randomInt(1, 6));
         return Result.success(voPage);
     }
 
-    // ================== 增删改操作 ==================
+    @GetMapping("/export")
+    public ResponseEntity<byte[]> export() {
+        List<IchProject> projects = projectService.list(new QueryWrapper<IchProject>().orderByDesc("id"));
+        StringBuilder csv = new StringBuilder();
+        csv.append("ID,Name,Protect Level,Status,Category ID,Region ID\n");
+        for (IchProject project : projects) {
+            csv.append(safeCsv(project.getId()))
+                    .append(',')
+                    .append(safeCsv(project.getName()))
+                    .append(',')
+                    .append(safeCsv(project.getProtectLevel()))
+                    .append(',')
+                    .append(safeCsv(project.getStatus()))
+                    .append(',')
+                    .append(safeCsv(project.getCategoryId()))
+                    .append(',')
+                    .append(safeCsv(project.getRegionId()))
+                    .append("\n");
+        }
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=projects.csv")
+                .contentType(new MediaType("text", "csv", StandardCharsets.UTF_8))
+                .body(csv.toString().getBytes(StandardCharsets.UTF_8));
+    }
 
     @PostMapping("/add")
-    public Result<Boolean> add(@RequestBody com.example.demo.model.dto.IchProjectDTO project) {
-        // 如果是从非管理员页面提交，通常 audit_status 默认为 0（待审核）。不过这里交由前端或是默认传递 0
-        if (project.getAuditStatus() == null) {
+    public Result<Boolean> add(@RequestBody IchProjectDTO project, HttpServletRequest request) {
+        Long currentUserId = RequestAuthUtil.getCurrentUserId(request);
+        if (currentUserId == null) {
+            return Result.error("Please log in first");
+        }
+        if (!RequestAuthUtil.isAdmin(request)) {
+            project.setSubmitterId(currentUserId);
+            project.setAuditStatus(0);
+            project.setAuditBy(null);
+            project.setAuditReason(null);
+        } else if (project.getAuditStatus() == null) {
             project.setAuditStatus(0);
         }
-        // ✅ Bug6修复：调用带 @Transactional 的 Service 方法
-        Result<Boolean> res = projectService.saveProjectWithInheritors(project);
-        if (Boolean.TRUE.equals(res.getData()))
+
+        Result<Boolean> result = projectService.saveProjectWithInheritors(project);
+        if (Boolean.TRUE.equals(result.getData())) {
             clearProjectCache();
-        return res;
+        }
+        return result;
     }
 
     @PutMapping("/update")
-    public Result<Boolean> update(@RequestBody com.example.demo.model.dto.IchProjectDTO project) {
-        Result<Boolean> res = projectService.saveProjectWithInheritors(project);
-        if (Boolean.TRUE.equals(res.getData()))
+    public Result<Boolean> update(@RequestBody IchProjectDTO project, HttpServletRequest request) {
+        if (!RequestAuthUtil.isAdmin(request)) {
+            return Result.error("Only administrators can update projects");
+        }
+        Result<Boolean> result = projectService.saveProjectWithInheritors(project);
+        if (Boolean.TRUE.equals(result.getData())) {
             clearProjectCache();
-        return res;
+        }
+        return result;
     }
 
     @PutMapping("/audit")
-    public Result<Boolean> audit(
-            @RequestParam Long id,
-            @RequestParam Integer auditStatus,
-            @RequestParam(required = false) String auditReason,
-            javax.servlet.http.HttpServletRequest request) {
-
+    public Result<Boolean> audit(@RequestParam Long id,
+                                 @RequestParam Integer auditStatus,
+                                 @RequestParam(required = false) String auditReason,
+                                 HttpServletRequest request) {
+        if (!RequestAuthUtil.isAdmin(request)) {
+            return Result.error("Only administrators can audit projects");
+        }
         if (auditStatus == 2 && (auditReason == null || auditReason.trim().isEmpty())) {
-            return Result.error("驳回时必须填写驳回原因");
+            return Result.error("Audit reason is required when rejecting a project");
         }
 
         IchProject project = projectService.getById(id);
         if (project == null) {
-            return Result.error("项目不存在");
+            return Result.error("Project not found");
         }
 
         project.setAuditStatus(auditStatus);
-        if (auditStatus == 2 && auditReason != null) {
-            project.setAuditReason(auditReason.trim());
+        if (auditStatus == 2) {
+            project.setAuditReason(auditReason == null ? null : auditReason.trim());
         } else if (auditStatus == 1) {
-            project.setAuditReason(null); // 通过时清空驳回原因
+            project.setAuditReason(null);
         }
 
-        // 记录审核人
-        String username = (String) request.getAttribute("username");
+        String username = RequestAuthUtil.getCurrentUsername(request);
         if (username != null) {
             project.setAuditBy(username);
         }
@@ -163,45 +195,97 @@ public class IchProjectController {
     }
 
     @DeleteMapping("/delete/{id}")
-    public Result<Boolean> delete(@PathVariable Long id) {
+    public Result<Boolean> delete(@PathVariable Long id, HttpServletRequest request) {
+        if (!RequestAuthUtil.isAdmin(request)) {
+            return Result.error("Only administrators can delete projects");
+        }
         boolean success = projectService.removeById(id);
-        if (success)
+        if (success) {
             clearProjectCache();
+        }
         return Result.success(success);
     }
 
     @DeleteMapping("/delete/batch")
-    public Result<Boolean> deleteBatch(@RequestBody List<Integer> ids) {
+    public Result<Boolean> deleteBatch(@RequestBody List<Integer> ids, HttpServletRequest request) {
+        if (!RequestAuthUtil.isAdmin(request)) {
+            return Result.error("Only administrators can batch delete projects");
+        }
         boolean success = projectService.removeByIds(ids);
-        if (success)
+        if (success) {
             clearProjectCache();
+        }
         return Result.success(success);
     }
 
-    // ================== 缓存清理器 ==================
+    private Page<IchProjectVO> getCachedPage(String queryKey) {
+        if (!redisAvailable()) {
+            return null;
+        }
+        try {
+            String cacheData = stringRedisTemplate.opsForValue().get(queryKey);
+            if (StrUtil.isBlank(cacheData)) {
+                return null;
+            }
+            return JSONUtil.toBean(cacheData, new TypeReference<Page<IchProjectVO>>() {}, false);
+        } catch (Exception ex) {
+            return null;
+        }
+    }
+
+    private void cachePage(String queryKey, Page<IchProjectVO> voPage, long ttlMinutes) {
+        if (!redisAvailable()) {
+            return;
+        }
+        try {
+            stringRedisTemplate.opsForValue().set(queryKey, JSONUtil.toJsonStr(voPage), ttlMinutes, TimeUnit.MINUTES);
+        } catch (Exception ignored) {
+        }
+    }
 
     private void clearProjectCache() {
-        // 使用 scan 替代危险的 keys 取保 Redis 安全
-        Set<String> keys = stringRedisTemplate
-                .execute((org.springframework.data.redis.core.RedisCallback<Set<String>>) connection -> {
-                    Set<String> keysTmp = new java.util.HashSet<>();
-                    try (org.springframework.data.redis.core.Cursor<byte[]> cursor = connection
-                            .scan(org.springframework.data.redis.core.ScanOptions.scanOptions()
-                                    .match(PROJECT_PAGE_CACHE_PREFIX + "*").count(100).build())) {
-                        while (cursor.hasNext()) {
-                            keysTmp.add(new String(cursor.next(), java.nio.charset.StandardCharsets.UTF_8));
-                        }
-                    } catch (Exception e) {
-                    }
-                    return keysTmp;
-                });
-        if (keys != null && !keys.isEmpty()) {
-            stringRedisTemplate.delete(keys);
-            System.out.println("【缓存清理】已安全清空非遗项目列表相关的 Redis 缓存，防止脏读");
+        if (!redisAvailable()) {
+            return;
         }
-        stringRedisTemplate.delete(ECHARTS_DATA_KEY);
-        System.out.println("【缓存清理】联动清空首页大屏数据 Redis 缓存");
-        stringRedisTemplate.convertAndSend("project_update_channel", "PROJECT_DATA_CHANGED");
-        System.out.println("【WebSocket广播】已通过 Redis 发送全局数据更新通知");
+        try {
+            Set<String> keys = stringRedisTemplate.execute((RedisCallback<Set<String>>) connection -> {
+                Set<String> cachedKeys = new HashSet<>();
+                try (org.springframework.data.redis.core.Cursor<byte[]> cursor = connection.scan(
+                        ScanOptions.scanOptions().match(PROJECT_PAGE_CACHE_PREFIX + "*").count(100).build())) {
+                    while (cursor.hasNext()) {
+                        cachedKeys.add(new String(cursor.next(), StandardCharsets.UTF_8));
+                    }
+                }
+                return cachedKeys;
+            });
+            if (keys != null && !keys.isEmpty()) {
+                stringRedisTemplate.delete(keys);
+            }
+            stringRedisTemplate.delete(ECHARTS_DATA_KEY);
+            stringRedisTemplate.convertAndSend("project_update_channel", "PROJECT_DATA_CHANGED");
+        } catch (Exception ignored) {
+        }
+    }
+
+    private String safeCsv(Object value) {
+        if (value == null) {
+            return "";
+        }
+        String text = String.valueOf(value).replace("\"", "\"\"");
+        return "\"" + text + "\"";
+    }
+
+    private boolean redisAvailable() {
+        if (stringRedisTemplate == null) {
+            return false;
+        }
+        try {
+            stringRedisTemplate.hasKey("redis:healthcheck");
+            return true;
+        } catch (RedisConnectionFailureException ex) {
+            return false;
+        } catch (Exception ex) {
+            return false;
+        }
     }
 }

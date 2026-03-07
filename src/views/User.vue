@@ -2,15 +2,12 @@
     <div class="app-main">
         <el-card>
             <template #header>
-                <div class="card-header" style="display: flex; justify-content: space-between;">
+                <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
                     <div style="display: flex; gap: 10px;">
-                        <el-input v-model="searchName" placeholder="搜索用户名..." style="width: 200px;" clearable
-                            @clear="fetchData" />
+                        <el-input v-model="searchName" placeholder="搜索用户名" style="width: 220px;" clearable @clear="fetchData" />
                         <el-button type="primary" @click="fetchData">查询</el-button>
                     </div>
-                    <el-button type="success" @click="openAddDialog" v-if="currentUser.role === 'admin'">
-                        新增用户
-                    </el-button>
+                    <el-button type="success" @click="openAddDialog" v-if="currentUser.role === 'admin'">新增用户</el-button>
                 </div>
             </template>
 
@@ -32,23 +29,17 @@
                         <el-tag type="info" v-else>禁用</el-tag>
                     </template>
                 </el-table-column>
-
                 <el-table-column label="操作" width="220" fixed="right">
                     <template #default="scope">
                         <el-button link type="primary" size="small" @click="handleEdit(scope.row)">编辑</el-button>
-
-                        <el-button link type="warning" size="small" @click="handleResetPwd(scope.row.id)"
-                            v-if="currentUser.role === 'admin'">重置密码</el-button>
-
-                        <el-button link type="danger" size="small" @click="handleDelete(scope.row.id)"
-                            v-if="currentUser.role === 'admin'">删除</el-button>
+                        <el-button link type="warning" size="small" @click="handleResetPwd(scope.row.id)" v-if="currentUser.role === 'admin'">重置密码</el-button>
+                        <el-button link type="danger" size="small" @click="handleDelete(scope.row.id)" v-if="currentUser.role === 'admin'">删除</el-button>
                     </template>
                 </el-table-column>
             </el-table>
 
             <div style="margin-top: 20px; display: flex; justify-content: flex-end;">
-                <el-pagination background layout="total, prev, pager, next" :total="total" :page-size="pageSize"
-                    @current-change="handlePageChange" />
+                <el-pagination background layout="total, prev, pager, next" :total="total" :page-size="pageSize" @current-change="handlePageChange" />
             </div>
         </el-card>
 
@@ -69,6 +60,12 @@
                 <el-form-item label="邮箱">
                     <el-input v-model="form.email" />
                 </el-form-item>
+                <el-form-item label="状态">
+                    <el-radio-group v-model="form.status" :disabled="currentUser.role !== 'admin'">
+                        <el-radio :value="1">正常</el-radio>
+                        <el-radio :value="0">禁用</el-radio>
+                    </el-radio-group>
+                </el-form-item>
             </el-form>
             <template #footer>
                 <el-button @click="dialogVisible = false">取消</el-button>
@@ -79,33 +76,29 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
-import axios from 'axios'
+import { onMounted, reactive, ref } from 'vue'
 import request from '@/utils/request'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
-// 状态变量
-const tableData = ref([])
+const tableData = ref<any[]>([])
 const total = ref(0)
 const pageSize = ref(10)
 const currentPage = ref(1)
 const searchName = ref('')
 const dialogVisible = ref(false)
-const loading = ref(false)     // 表格加载状态
-const btnLoading = ref(false)  // 按钮提交状态
-const currentUser = ref<any>({}) // 当前登录用户
+const loading = ref(false)
+const btnLoading = ref(false)
+const currentUser = ref<any>({})
 
-// 表单数据
 const form = reactive({
-    id: undefined,
+    id: undefined as number | undefined,
     username: '',
     nickname: '',
     role: 'user',
     email: '',
-    status: 1
+    status: 1,
 })
 
-// 初始化
 onMounted(() => {
     const str = sessionStorage.getItem('user')
     if (str) {
@@ -114,99 +107,81 @@ onMounted(() => {
     fetchData()
 })
 
-// 获取列表数据
 const fetchData = async () => {
-    loading.value = true // 开始加载
+    loading.value = true
     try {
         const res = await request.get('/users/page', {
             params: {
                 pageNum: currentPage.value,
                 pageSize: pageSize.value,
-                username: searchName.value
-            }
+                keyword: searchName.value,
+            },
         })
-        if (res.data.code === 200) {
-            tableData.value = res.data.data.records
-            total.value = res.data.data.total
-        }
-    } catch (error) {
+        tableData.value = res.data.data.records
+        total.value = res.data.data.total
+    } catch {
         ElMessage.error('数据加载失败')
     } finally {
-        loading.value = false // 结束加载
+        loading.value = false
     }
 }
 
-// 打开新增弹窗
 const openAddDialog = () => {
     Object.assign(form, { id: undefined, username: '', nickname: '', role: 'user', email: '', status: 1 })
     dialogVisible.value = true
 }
 
-// 打开编辑弹窗
 const handleEdit = (row: any) => {
     Object.assign(form, row)
     dialogVisible.value = true
 }
 
-// 保存用户
 const saveUser = async () => {
     if (!form.username) {
         ElMessage.warning('请输入用户名')
         return
     }
 
-    btnLoading.value = true // 按钮转圈
-    const url = form.id ? 'http://localhost:8080/api/users/update' : 'http://localhost:8080/api/users/add'
-    const method = form.id ? 'put' : 'post'
-
+    btnLoading.value = true
     try {
-        const res = await axios[method](url, form)
-        if (res.data.code === 200) {
-            ElMessage.success('保存成功')
-            dialogVisible.value = false
-            fetchData()
-        } else {
-            ElMessage.error(res.data.msg)
-        }
-    } catch (e) {
+        const res = form.id
+            ? await request.put('/users/update', form)
+            : await request.post('/users/add', form)
+
+        ElMessage.success(res.data.msg || '保存成功')
+        dialogVisible.value = false
+        fetchData()
+    } catch {
         ElMessage.error('操作失败')
     } finally {
-        btnLoading.value = false // 按钮恢复
+        btnLoading.value = false
     }
 }
 
-// 删除用户
-// 删除用户
 const handleDelete = (id: number) => {
-    // ✨✨ 新增：自杀防护逻辑
-    // 如果要删除的 ID 等于当前登录者的 ID
     if (id === currentUser.value.id) {
-        ElMessage.error('操作非法：您无法删除当前登录的管理员账号！')
-        return // 直接结束，不弹窗，不发请求
+        ElMessage.error('不能删除当前登录账号')
+        return
     }
 
-    // 原有的删除逻辑
-    ElMessageBox.confirm('确定删除该用户吗？', '警告', { type: 'warning' })
-        .then(async () => {
-            try {
-                await request.delete(`/users/delete/${id}`)
-                ElMessage.success('删除成功')
-                fetchData()
-            } catch (error) {
-                ElMessage.error('删除失败')
-            }
-        })
-}
-
-// 重置密码
-const handleResetPwd = (id: number) => {
-    ElMessageBox.confirm('确定将密码重置为 123456 吗？', '警告', { type: 'warning' }).then(async () => {
-        await request.put(`/users/reset-password/${id}`)
-        ElMessage.success('重置成功，新密码：123456')
+    ElMessageBox.confirm('确定删除该用户吗？', '警告', { type: 'warning' }).then(async () => {
+        try {
+            await request.delete(`/users/delete/${id}`)
+            ElMessage.success('删除成功')
+            fetchData()
+        } catch {
+            ElMessage.error('删除失败')
+        }
     })
 }
 
-// 翻页
+const handleResetPwd = (id: number) => {
+    ElMessageBox.confirm('确定将密码重置为 123456 吗？', '警告', { type: 'warning' }).then(async () => {
+        await request.put(`/users/reset-password/${id}`)
+        ElMessage.success('重置成功，新密码为 123456')
+    })
+}
+
 const handlePageChange = (val: number) => {
     currentPage.value = val
     fetchData()

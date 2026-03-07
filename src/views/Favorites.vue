@@ -1,8 +1,8 @@
 <template>
     <div class="favorites-container">
         <div class="page-header">
-            <h2 class="page-title">我的雅集收藏</h2>
-            <p class="page-subtitle">珍藏那些触动心灵的非遗之美</p>
+            <h2 class="page-title">我的收藏</h2>
+            <p class="page-subtitle">集中查看你收藏的非遗项目</p>
         </div>
 
         <div class="favorites-content">
@@ -12,7 +12,7 @@
 
             <div v-else-if="favoritesList.length === 0" class="empty-container">
                 <el-empty description="暂无收藏项目" :image-size="200">
-                    <el-button type="primary" @click="$router.push('/home')">去发现非遗之美</el-button>
+                    <el-button type="primary" @click="$router.push('/home')">去首页看看</el-button>
                 </el-empty>
             </div>
 
@@ -20,11 +20,9 @@
                 <el-col :xs="24" :sm="12" :md="8" v-for="item in favoritesList" :key="item.id" class="project-card-col">
                     <el-card :body-style="{ padding: '0' }" class="heritage-card">
                         <div class="card-cover">
-                            <img :src="item.coverUrl || 'https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png'" :alt="item.name" class="cover-image" />
+                            <img :src="getFileUrl(item.coverUrl) || 'https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png'" :alt="item.name" class="cover-image" />
                             <div class="cover-overlay">
-                                <el-button link type="primary" text class="view-btn" @click="handleView(item)">
-                                    查看详情
-                                </el-button>
+                                <el-button link type="primary" text class="view-btn" @click="handleView(item)">查看详情</el-button>
                             </div>
                         </div>
                         <div class="card-body">
@@ -39,14 +37,12 @@
                             </div>
                             <div class="card-footer">
                                 <div class="inheritor-info">
-                                    <span class="label">传承人:</span>
+                                    <span class="label">传承人</span>
                                     <span class="value">{{ item.inheritorNames || '暂无记录' }}</span>
                                 </div>
                                 <div class="card-actions">
-                                    <el-button :type="'warning'" circle size="small" @click.stop="toggleCardFavorite(item.id)" class="favorite-btn">
-                                        <el-icon>
-                                            <StarFilled />
-                                        </el-icon>
+                                    <el-button type="warning" circle size="small" @click.stop="toggleCardFavorite(item.id)" class="favorite-btn">
+                                        <el-icon><StarFilled /></el-icon>
                                     </el-button>
                                 </div>
                             </div>
@@ -56,24 +52,21 @@
             </el-row>
 
             <div class="pagination-container" v-if="total > pageSize">
-                <el-pagination background layout="total, prev, pager, next" :total="total" :page-size="pageSize"
-                    @current-change="handlePageChange" />
+                <el-pagination background layout="total, prev, pager, next" :total="total" :page-size="pageSize" @current-change="handlePageChange" />
             </div>
         </div>
     </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import axios from 'axios'
 import request from '@/utils/request'
-import { StarFilled, Star } from '@element-plus/icons-vue'
+import { toServerUrl } from '@/utils/url'
+import { StarFilled } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 
 const router = useRouter()
-
-// 状态定义
 const userInfo = ref<any>({})
 const favoritesList = ref<any[]>([])
 const total = ref(0)
@@ -81,22 +74,19 @@ const pageSize = ref(8)
 const currentPage = ref(1)
 const loading = ref(false)
 
-// 加载用户信息
 const loadUserInfo = () => {
     const userStr = sessionStorage.getItem('user')
     if (userStr) {
         try {
             userInfo.value = JSON.parse(userStr)
-        } catch (e) {
-            console.error('用户信息解析失败', e)
+        } catch (error) {
+            console.error('Failed to parse user info', error)
         }
     }
 }
 
-// 获取收藏列表
 const fetchFavorites = async () => {
     if (!userInfo.value.id) return
-    
     loading.value = true
     try {
         const res = await request.get('/favorites/list', {
@@ -106,49 +96,46 @@ const fetchFavorites = async () => {
                 pageSize: pageSize.value
             }
         })
-        
         if (res.data.code === 200) {
-            favoritesList.value = res.data.data.records
-            total.value = res.data.data.total
+            favoritesList.value = res.data.data.records || []
+            total.value = res.data.data.total || 0
         }
     } catch (error) {
-        console.error('获取收藏列表失败', error)
+        console.error('Failed to fetch favorites', error)
         ElMessage.error('获取收藏列表失败')
     } finally {
         loading.value = false
     }
 }
 
-// 切换收藏状态
 const toggleCardFavorite = async (projectId: number) => {
-    if (!userInfo.value.id) return ElMessage.warning('请先登录')
-    
+    if (!userInfo.value.id) {
+        ElMessage.warning('请先登录')
+        return
+    }
     try {
         const res = await request.post('/favorites/toggle', {
             userId: userInfo.value.id,
-            projectId: projectId
+            projectId
         })
-        
-        const isFav = res.data.data
-        isFav ? ElMessage.success('已加入您的雅集收藏') : ElMessage.info('已移出收藏')
-        
-        // 重新加载收藏列表
+        if (res.data.data) {
+            ElMessage.success('已加入收藏')
+        } else {
+            ElMessage.info('已取消收藏')
+        }
         await fetchFavorites()
     } catch (error) {
-        console.error('切换收藏状态失败', error)
+        console.error('Failed to toggle favorite', error)
         ElMessage.error('操作失败，请重试')
     }
 }
 
-// 查看项目详情
 const handleView = (item: any) => {
-    // 跳转到Home页面并传递项目ID
     router.push({ path: '/home', query: { id: item.id } })
 }
 
-// 获取级别对应的标签类型
 const getLevelType = (level: string) => {
-    const levelMap: any = {
+    const levelMap: Record<string, string> = {
         '国家级': 'danger',
         '省级': 'warning',
         '市级': 'info',
@@ -157,9 +144,12 @@ const getLevelType = (level: string) => {
     return levelMap[level] || 'info'
 }
 
-// 获取类别名称
+const getFileUrl = (url: string) => {
+    return toServerUrl(url)
+}
+
 const getCategoryName = (categoryId: number) => {
-    const categoryMap: any = {
+    const categoryMap: Record<number, string> = {
         1: '民间文学',
         2: '传统音乐',
         3: '传统舞蹈',
@@ -174,13 +164,11 @@ const getCategoryName = (categoryId: number) => {
     return categoryMap[categoryId] || '其他'
 }
 
-// 分页处理
-const handlePageChange = (val: number) => {
-    currentPage.value = val
+const handlePageChange = (page: number) => {
+    currentPage.value = page
     fetchFavorites()
 }
 
-// 生命周期
 onMounted(() => {
     loadUserInfo()
     fetchFavorites()

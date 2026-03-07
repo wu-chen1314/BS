@@ -1,9 +1,9 @@
 import axios, { AxiosError, InternalAxiosRequestConfig, AxiosResponse } from 'axios'
-import { ElMessage } from 'element-plus'
 import errorHandler from './errorHandler'
+import { API_BASE_URL } from './url'
 
 const service = axios.create({
-    baseURL: 'http://localhost:8080/api',
+    baseURL: API_BASE_URL,
     timeout: 10000,
     headers: {
         'Content-Type': 'application/json;charset=UTF-8'
@@ -20,7 +20,7 @@ service.interceptors.request.use(
         return config
     },
     (error: AxiosError) => {
-        console.error('请求错误:', error)
+        console.error('Request error:', error)
         return Promise.reject(error)
     }
 )
@@ -31,13 +31,13 @@ service.interceptors.response.use(
 
         if (res.code === 200) {
             return response
-        } else {
-            errorHandler.showSimpleError(res.msg || '操作失败')
-            return Promise.reject(new Error(res.msg || '操作失败'))
         }
+
+        errorHandler.showSimpleError(res.msg || 'Operation failed')
+        return Promise.reject(new Error(res.msg || 'Operation failed'))
     },
     (error: AxiosError) => {
-        errorHandler.handleError(error, '请求')
+        errorHandler.handleError(error, 'Request')
         return Promise.reject(error)
     }
 )

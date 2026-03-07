@@ -8,7 +8,7 @@ import org.springframework.data.redis.listener.ChannelTopic;
 import org.springframework.data.redis.listener.RedisMessageListenerContainer;
 
 @Configuration
-@ConditionalOnProperty(name = "spring.redis.enabled", havingValue = "true", matchIfMissing = true)
+@ConditionalOnProperty(name = "spring.redis.enabled", havingValue = "true", matchIfMissing = false)
 public class RedisPubSubConfig {
 
     @Bean
@@ -16,10 +16,7 @@ public class RedisPubSubConfig {
                                                    RedisMessageSubscriber subscriber) {
         RedisMessageListenerContainer container = new RedisMessageListenerContainer();
         container.setConnectionFactory(connectionFactory);
-
-        // 核心魔法：让 subscriber 专门监听 "project_update_channel" 频道
         container.addMessageListener(subscriber, new ChannelTopic("project_update_channel"));
-
         return container;
     }
 }

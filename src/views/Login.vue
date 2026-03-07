@@ -6,55 +6,46 @@
                 <div class="card-inner">
                     <div class="brand-side">
                         <div class="brand-content">
-                            <div class="seal">⚘ 非遗</div>
+                            <div class="seal">非遗</div>
                             <h1>非遗传承</h1>
                             <p>让传统技艺活在当下</p>
                             <div class="divider"></div>
-                            <div class="quote">“匠心之韵，不止于技，更在于心”</div>
+                            <div class="quote">让文化被看见，让传承继续发生。</div>
                         </div>
                     </div>
 
                     <div class="form-side">
                         <div class="form-header">
-                            <h2>{{ isLogin ? '欢迎回来' : '开启传承之旅' }}</h2>
-                            <p>{{ isLogin ? '请登录您的账号' : '填写以下信息创建账号' }}</p>
+                            <h2>{{ isLogin ? '欢迎回来' : '创建账号' }}</h2>
+                            <p>{{ isLogin ? '请输入您的账号信息' : '填写以下信息创建账号' }}</p>
                         </div>
 
-                        <el-form ref="formRef" :model="form" :rules="rules" label-width="0" class="login-form"
-                            @keyup.enter="handleSubmit">
-
+                        <el-form ref="formRef" :model="form" :rules="rules" label-width="0" class="login-form" @keyup.enter="handleSubmit">
                             <el-form-item prop="username">
-                                <el-input v-model="form.username" placeholder="用户名 (字母/数字/下划线)" :prefix-icon="User"
-                                    size="large" clearable />
+                                <el-input v-model="form.username" placeholder="用户名" :prefix-icon="User" size="large" clearable />
                             </el-form-item>
 
                             <el-form-item prop="nickname" v-if="!isLogin">
-                                <el-input v-model="form.nickname" placeholder="昵称 (必填)" :prefix-icon="Edit" size="large"
-                                    clearable />
+                                <el-input v-model="form.nickname" placeholder="昵称" :prefix-icon="Edit" size="large" clearable />
                             </el-form-item>
 
                             <el-form-item prop="passwordHash">
-                                <el-input v-model="form.passwordHash" type="password" placeholder="密码 (6-30位)"
-                                    :prefix-icon="Lock" size="large" show-password clearable />
+                                <el-input v-model="form.passwordHash" type="password" placeholder="密码" :prefix-icon="Lock" size="large" show-password clearable />
                             </el-form-item>
 
                             <el-form-item prop="confirmPassword" v-if="!isLogin">
-                                <el-input v-model="form.confirmPassword" type="password" placeholder="请再次输入密码确认"
-                                    :prefix-icon="Key" size="large" show-password clearable />
+                                <el-input v-model="form.confirmPassword" type="password" placeholder="请再次输入密码" :prefix-icon="Key" size="large" show-password clearable />
                             </el-form-item>
 
                             <el-form-item prop="email" v-if="!isLogin">
-                                <el-input v-model="form.email" placeholder="邮箱地址 (必填)" :prefix-icon="Message"
-                                    size="large" clearable />
+                                <el-input v-model="form.email" placeholder="邮箱地址" :prefix-icon="Message" size="large" clearable />
                             </el-form-item>
 
                             <el-form-item prop="code" v-if="!isLogin">
                                 <div style="display: flex; width: 100%; gap: 10px;">
-                                    <el-input v-model="form.code" placeholder="邮箱验证码" :prefix-icon="Message"
-                                        size="large" style="flex: 1;" />
-                                    <el-button type="primary" plain @click="sendRegCode" :disabled="regCountdown > 0"
-                                        style="width: 110px; height: 40px;">
-                                        {{ regCountdown > 0 ? `${regCountdown}s 后重发` : '获取验证码' }}
+                                    <el-input v-model="form.code" placeholder="验证码" :prefix-icon="Message" size="large" style="flex: 1;" />
+                                    <el-button type="primary" plain @click="sendRegCode" :disabled="regCountdown > 0" style="width: 110px; height: 40px;">
+                                        {{ regCountdown > 0 ? `${regCountdown}s` : '获取验证码' }}
                                     </el-button>
                                 </div>
                             </el-form-item>
@@ -66,17 +57,14 @@
                             <div style="height: 10px;" v-else></div>
 
                             <el-form-item>
-                                <el-button type="primary" :loading="loading" class="login-btn" size="large"
-                                    @click="handleSubmit">
-                                    {{ isLogin ? '登 录' : '注 册' }}
+                                <el-button type="primary" :loading="loading" class="login-btn" size="large" @click="handleSubmit">
+                                    {{ isLogin ? '登录' : '注册' }}
                                 </el-button>
                             </el-form-item>
 
                             <div class="register-tip">
-                                <span v-if="isLogin">还没有账号？ <el-link type="primary" :underline="false"
-                                        @click="toggleMode">立即注册</el-link></span>
-                                <span v-else>已有账号？ <el-link type="primary" :underline="false"
-                                        @click="toggleMode">直接登录</el-link></span>
+                                <span v-if="isLogin">还没有账号？<el-link type="primary" :underline="false" @click="toggleMode">立即注册</el-link></span>
+                                <span v-else>已有账号？<el-link type="primary" :underline="false" @click="toggleMode">直接登录</el-link></span>
                             </div>
                         </el-form>
                     </div>
@@ -90,107 +78,55 @@
                     <el-form-item label="登录账号" prop="username">
                         <el-input v-model="forgotForm.username" placeholder="请输入账号" :prefix-icon="User" />
                     </el-form-item>
-
                     <el-form-item label="绑定邮箱" prop="email">
-                        <el-input v-model="forgotForm.email" placeholder="请输入该账号绑定的邮箱" :prefix-icon="Message" />
+                        <el-input v-model="forgotForm.email" placeholder="请输入绑定邮箱" :prefix-icon="Message" />
                     </el-form-item>
-
                     <el-form-item label="验证码" prop="code">
                         <div style="display: flex; width: 100%; gap: 10px;">
-                            <el-input v-model="forgotForm.code" placeholder="输入收到的6位验证码" />
-                            <el-button type="primary" plain @click="sendForgotCode" :disabled="forgotCountdown > 0"
-                                style="width: 110px;">
+                            <el-input v-model="forgotForm.code" placeholder="输入验证码" />
+                            <el-button type="primary" plain @click="sendForgotCode" :disabled="forgotCountdown > 0" style="width: 110px;">
                                 {{ forgotCountdown > 0 ? `${forgotCountdown}s` : '获取验证码' }}
                             </el-button>
                         </div>
                     </el-form-item>
-
                     <el-form-item label="新密码" prop="newPassword">
-                        <el-input v-model="forgotForm.newPassword" type="password" show-password placeholder="请输入新密码"
-                            :prefix-icon="Lock" />
+                        <el-input v-model="forgotForm.newPassword" type="password" show-password placeholder="请输入新密码" :prefix-icon="Lock" />
                     </el-form-item>
-
                     <el-form-item label="确认密码" prop="confirmPassword">
-                        <el-input v-model="forgotForm.confirmPassword" type="password" show-password
-                            placeholder="请再次输入新密码" :prefix-icon="Key" />
+                        <el-input v-model="forgotForm.confirmPassword" type="password" show-password placeholder="请再次输入新密码" :prefix-icon="Key" />
                     </el-form-item>
                 </el-form>
             </div>
             <template #footer>
                 <span class="dialog-footer">
-                    <el-button @click="forgotDialogVisible = false">取 消</el-button>
-                    <el-button type="primary" @click="handleResetPassword" :loading="resetLoading"
-                        style="background: #8b5a2b; border-color: #8b5a2b;">
-                        确 认 重 置
+                    <el-button @click="forgotDialogVisible = false">取消</el-button>
+                    <el-button type="primary" @click="handleResetPassword" :loading="resetLoading" style="background: #8b5a2b; border-color: #8b5a2b;">
+                        确认重置
                     </el-button>
                 </span>
             </template>
         </el-dialog>
     </div>
 </template>
-
 <script setup lang="ts">
 import { ref, reactive } from 'vue'
-import { User, Lock, Edit, Key, Iphone, Message } from '@element-plus/icons-vue'
-import axios from 'axios'
+import { User, Lock, Edit, Key, Message } from '@element-plus/icons-vue'
+import request from '@/utils/request'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
 const loading = ref(false)
+const resetLoading = ref(false)
 const remember = ref(false)
-const formRef = ref<FormInstance>()
 const isLogin = ref(true)
-
-// =============== 定时器与发送验证码逻辑 ===============
 const regCountdown = ref(0)
 const forgotCountdown = ref(0)
 
-const sendEmailApi = async (email: string) => {
-    try {
-        const res = await axios.post('http://localhost:8080/api/auth/send-code', { email })
-        if (res.data.code === 200) {
-            ElMessage.success('验证码已发送至邮箱，5分钟内有效')
-            return true
-        } else {
-            ElMessage.error(res.data.msg || '发送失败')
-            return false
-        }
-    } catch (err) {
-        ElMessage.error('请求失败，请检查后端是否正常启动')
-        return false
-    }
-}
+const formRef = ref<FormInstance>()
+const forgotFormRef = ref<FormInstance>()
+const forgotDialogVisible = ref(false)
 
-const sendRegCode = async () => {
-    if (!form.email || !/^[\w-]+(\.[\w-]+)*@[\w-]+(\.[\w-]+)+$/.test(form.email)) {
-        return ElMessage.warning('请先输入正确的邮箱格式')
-    }
-    const success = await sendEmailApi(form.email)
-    if (success) {
-        regCountdown.value = 60
-        const timer = setInterval(() => {
-            regCountdown.value--
-            if (regCountdown.value <= 0) clearInterval(timer)
-        }, 1000)
-    }
-}
-
-const sendForgotCode = async () => {
-    if (!forgotForm.email || !/^[\w-]+(\.[\w-]+)*@[\w-]+(\.[\w-]+)+$/.test(forgotForm.email)) {
-        return ElMessage.warning('请先输入正确的邮箱格式')
-    }
-    const success = await sendEmailApi(forgotForm.email)
-    if (success) {
-        forgotCountdown.value = 60
-        const timer = setInterval(() => {
-            forgotCountdown.value--
-            if (forgotCountdown.value <= 0) clearInterval(timer)
-        }, 1000)
-    }
-}
-
-// =============== 登录与注册模块 ===============
 const form = reactive({
     username: '',
     passwordHash: '',
@@ -200,108 +136,6 @@ const form = reactive({
     code: ''
 })
 
-const validateConfirmPassword = (rule: any, value: any, callback: any) => {
-    if (isLogin.value) return callback()
-    if (value === '') callback(new Error('请再次输入密码'))
-    else if (value !== form.passwordHash) callback(new Error('两次输入的密码不一致!'))
-    else callback()
-}
-
-const rules = reactive<FormRules>({
-    username: [
-        { required: true, message: '请输入账号', trigger: 'blur' },
-        { pattern: /^[a-zA-Z0-9_]+$/, message: '只能包含字母、数字和下划线', trigger: 'blur' }
-    ],
-    passwordHash: [{ required: true, message: '请输入密码', trigger: 'blur' }],
-    confirmPassword: [{ validator: validateConfirmPassword, trigger: 'blur' }],
-    nickname: [{ required: true, message: '请输入昵称', trigger: 'blur' }],
-    email: [
-        { required: true, message: '注册必须填写邮箱', trigger: 'blur' },
-        { type: 'email', message: '邮箱格式错误', trigger: ['blur', 'change'] }
-    ],
-    code: [{ required: true, message: '请输入验证码', trigger: 'blur' }]
-})
-
-const toggleMode = () => {
-    isLogin.value = !isLogin.value
-    form.username = ''; form.passwordHash = ''; form.confirmPassword = '';
-    form.nickname = ''; form.email = ''; form.code = '';
-    setTimeout(() => formRef.value?.clearValidate(), 0)
-}
-
-const handleSubmit = async () => {
-    await formRef.value?.validate(async (valid) => {
-        if (!valid) return
-        loading.value = true
-        try {
-            // 注册请求将 code 挂在 URL 上作为 RequestParam
-            const url = isLogin.value
-                ? 'http://localhost:8080/api/login'
-                : `http://localhost:8080/api/auth/register?code=${form.code}`
-
-            const payload = {
-                username: form.username,
-                password: form.passwordHash,  // 登录时使用 password 字段
-                nickname: form.nickname,
-                email: form.email
-            }
-
-            const res = await axios.post(url, payload)
-
-            if (res.data.code === 200) {
-                ElMessage.success(isLogin.value ? '登录成功' : '注册成功并自动登录')
-                
-                if (isLogin.value) {
-                    // 登录成功，存储用户信息和 Token
-                    const loginData = res.data.data
-                    // 将Token添加到用户对象中，便于request模块使用
-                    const userWithToken = {
-                        ...loginData.user,
-                        token: loginData.token
-                    }
-                    sessionStorage.setItem('user', JSON.stringify(userWithToken))
-                    sessionStorage.setItem('token', loginData.token)
-                    sessionStorage.setItem('tokenExpires', loginData.expiresIn)
-                } else {
-                    // 注册成功，存储用户信息
-                    sessionStorage.setItem('user', JSON.stringify(res.data.data))
-                }
-                
-                router.push('/home')
-            } else {
-                ElMessage.error(res.data.msg || '操作失败')
-            }
-        } catch (error: any) {
-            // 显示详细的错误信息
-            if (error.response) {
-                const status = error.response.status
-                const message = error.response.data?.msg || error.response.data?.message || '操作失败'
-                
-                if (status === 401) {
-                    ElMessage.error(message || '用户名或密码错误')
-                } else if (status === 403) {
-                    ElMessage.error('账户已被锁定，请稍后再试或联系管理员')
-                } else if (status === 429) {
-                    ElMessage.error('操作过于频繁，请稍后再试')
-                } else {
-                    ElMessage.error(message)
-                }
-            } else if (error.message === 'Network Error') {
-                ElMessage.error('网络连接失败，请检查网络后重试')
-            } else {
-                ElMessage.error('服务器响应超时，请稍后重试')
-            }
-        } finally {
-            loading.value = false
-        }
-    })
-}
-
-// =============== 忘记密码模块 ===============
-const forgotDialogVisible = ref(false)
-const resetLoading = ref(false)
-const forgotFormRef = ref<FormInstance>()
-
 const forgotForm = reactive({
     username: '',
     email: '',
@@ -310,24 +144,155 @@ const forgotForm = reactive({
     confirmPassword: ''
 })
 
+const validateConfirmPassword = (_rule: any, value: string, callback: any) => {
+    if (isLogin.value) return callback()
+    if (!value) return callback(new Error('请再次输入密码'))
+    if (value !== form.passwordHash) return callback(new Error('两次输入的密码不一致'))
+    callback()
+}
+
+const validateForgotConfirmPassword = (_rule: any, value: string, callback: any) => {
+    if (!value) return callback(new Error('请确认新密码'))
+    if (value !== forgotForm.newPassword) return callback(new Error('两次输入的密码不一致'))
+    callback()
+}
+
+const rules = reactive<FormRules>({
+    username: [
+        { required: true, message: '请输入账号', trigger: 'blur' },
+        { pattern: /^[a-zA-Z0-9_]+$/, message: '仅支持字母、数字和下划线', trigger: 'blur' }
+    ],
+    passwordHash: [{ required: true, message: '请输入密码', trigger: 'blur' }],
+    confirmPassword: [{ validator: validateConfirmPassword, trigger: 'blur' }],
+    nickname: [{ required: !isLogin.value, message: '请输入昵称', trigger: 'blur' }],
+    email: [
+        { required: !isLogin.value, message: '请输入邮箱', trigger: 'blur' },
+        { type: 'email', message: '邮箱格式不正确', trigger: ['blur', 'change'] }
+    ],
+    code: [{ required: !isLogin.value, message: '请输入验证码', trigger: 'blur' }]
+})
+
 const forgotRules = reactive<FormRules>({
     username: [{ required: true, message: '请输入账号', trigger: 'blur' }],
     email: [
         { required: true, message: '请输入邮箱', trigger: 'blur' },
-        { type: 'email', message: '邮箱格式错误', trigger: ['blur', 'change'] }
+        { type: 'email', message: '邮箱格式不正确', trigger: ['blur', 'change'] }
     ],
     code: [{ required: true, message: '请输入验证码', trigger: 'blur' }],
     newPassword: [{ required: true, message: '请输入新密码', trigger: 'blur' }],
-    confirmPassword: [
-        { required: true, message: '请确认新密码', trigger: 'blur' },
-        {
-            validator: (rule: any, value: any, callback: any) => {
-                if (value !== forgotForm.newPassword) callback(new Error('两次输入密码不一致!'))
-                else callback()
-            }, trigger: 'blur'
-        }
-    ]
+    confirmPassword: [{ validator: validateForgotConfirmPassword, trigger: 'blur' }]
 })
+
+const sendEmailApi = async (email: string) => {
+    try {
+        const res = await request.post('/auth/send-code', { email })
+        if (res.data.code === 200) {
+            ElMessage.success('验证码已发送，请查收邮箱')
+            return true
+        }
+        ElMessage.error(res.data.msg || '发送失败')
+        return false
+    } catch {
+        ElMessage.error('请求失败，请检查后端是否已启动')
+        return false
+    }
+}
+
+const startCountdown = (target: typeof regCountdown | typeof forgotCountdown) => {
+    target.value = 60
+    const timer = setInterval(() => {
+        target.value--
+        if (target.value <= 0) {
+            clearInterval(timer)
+        }
+    }, 1000)
+}
+
+const sendRegCode = async () => {
+    if (!form.email || !/^[\w-]+(\.[\w-]+)*@[\w-]+(\.[\w-]+)+$/.test(form.email)) {
+        return ElMessage.warning('请先输入正确的邮箱地址')
+    }
+    if (await sendEmailApi(form.email)) {
+        startCountdown(regCountdown)
+    }
+}
+
+const sendForgotCode = async () => {
+    if (!forgotForm.email || !/^[\w-]+(\.[\w-]+)*@[\w-]+(\.[\w-]+)+$/.test(forgotForm.email)) {
+        return ElMessage.warning('请先输入正确的邮箱地址')
+    }
+    if (await sendEmailApi(forgotForm.email)) {
+        startCountdown(forgotCountdown)
+    }
+}
+
+const toggleMode = () => {
+    isLogin.value = !isLogin.value
+    form.username = ''
+    form.passwordHash = ''
+    form.confirmPassword = ''
+    form.nickname = ''
+    form.email = ''
+    form.code = ''
+    setTimeout(() => formRef.value?.clearValidate(), 0)
+}
+
+const handleSubmit = async () => {
+    await formRef.value?.validate(async (valid) => {
+        if (!valid) return
+        loading.value = true
+        try {
+            const url = isLogin.value
+                ? '/login'
+                : `/auth/register?code=${form.code}`
+
+            const payload = isLogin.value
+                ? { username: form.username, password: form.passwordHash }
+                : {
+                    username: form.username,
+                    passwordHash: form.passwordHash,
+                    nickname: form.nickname,
+                    email: form.email
+                }
+
+            const res = await request.post(url, payload)
+            if (res.data.code !== 200) {
+                ElMessage.error(res.data.msg || '操作失败')
+                return
+            }
+
+            if (isLogin.value) {
+                const loginData = res.data.data
+                const userWithToken = {
+                    ...loginData.user,
+                    token: loginData.token
+                }
+                sessionStorage.setItem('user', JSON.stringify(userWithToken))
+                sessionStorage.setItem('token', loginData.token)
+                sessionStorage.setItem('tokenExpires', String(loginData.expiresIn))
+                ElMessage.success('登录成功')
+                router.push('/home')
+                return
+            }
+
+            const registeredUsername = form.username
+            ElMessage.success('注册成功，请使用新账号登录')
+            isLogin.value = true
+            form.username = registeredUsername
+            form.passwordHash = ''
+            form.confirmPassword = ''
+            form.nickname = ''
+            form.email = ''
+            form.code = ''
+            setTimeout(() => formRef.value?.clearValidate(), 0)
+        } catch (error: any) {
+            const message = error?.response?.data?.msg || error?.response?.data?.message
+            ElMessage.error(message || '请求失败，请稍后重试')
+        } finally {
+            loading.value = false
+        }
+    })
+}
 
 const openForgotDialog = () => {
     forgotDialogVisible.value = true
@@ -350,17 +315,16 @@ const handleResetPassword = async () => {
                 code: forgotForm.code,
                 newPassword: forgotForm.newPassword
             }
-            const res = await axios.post('http://localhost:8080/api/auth/reset-password', payload)
-
+            const res = await request.post('/auth/reset-password', payload)
             if (res.data.code === 200) {
                 ElMessage.success('密码重置成功，请重新登录')
                 forgotDialogVisible.value = false
                 form.username = forgotForm.username
                 form.passwordHash = ''
             } else {
-                ElMessage.error(res.data.msg || '验证失败')
+                ElMessage.error(res.data.msg || '重置失败')
             }
-        } catch (error) {
+        } catch {
             ElMessage.error('服务连接失败')
         } finally {
             resetLoading.value = false
@@ -384,7 +348,7 @@ const handleResetPassword = async () => {
     overflow: hidden;
 }
 
-/* 动态背景图案 */
+/* 鍔ㄦ€佽儗鏅浘妗?*/
 .bg-pattern {
     position: absolute;
     top: 0;
@@ -756,3 +720,9 @@ const handleResetPassword = async () => {
     }
 }
 </style>
+
+
+
+
+
+
