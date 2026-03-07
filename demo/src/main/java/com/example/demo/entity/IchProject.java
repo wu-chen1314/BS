@@ -6,44 +6,51 @@ import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
+
 import java.time.LocalDateTime;
 import java.util.List;
 
 @TableName("ich_project")
 @Data
 public class IchProject {
-    @ExcelProperty("项目 ID")
+    @ExcelProperty("项目ID")
     @TableId(type = IdType.AUTO)
     private Long id;
+
     private String name; // 项目名称
     private Long categoryId; // 类别 ID
     private Long regionId; // 地区 ID
     private String protectLevel; // 保护级别
-    private String status; // 存续状态
-    private String history; // 历史渊源
-    private String features; // 核心特征
+    private String status; // 传承状态
+    private String history; // 历史介绍
+    private String features; // 项目特点
     private String coverUrl; // 封面图
-    // ✨✨✨ 必须补上这个字段！
-    // 对应数据库的 video_url 字段
+    // 视频地址，对应数据库 video_url 字段
     private String videoUrl;
-    private Integer auditStatus; // 审核状态：1 通过
+    private Integer auditStatus; // 审核状态：0 待审核，1 已通过，2 已驳回
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
-    // 地图位置相关字段
+    // 地理与服务信息
     private java.math.BigDecimal longitude; // 经度
     private java.math.BigDecimal latitude; // 纬度
-    private String address; // 详细地址
+    private String address; // 地址
     private String contactPhone; // 联系电话
     private String openingHours; // 开放时间
 
-    // ✨✨✨ 新增临时字段
+    // 非数据库字段：传承人名称展示
     @TableField(exist = false)
     private String inheritorNames;
 
-    // ✨✨✨ 新增临时字段
+    // 非数据库字段：传承人 ID 集合
     @TableField(exist = false)
     private List<Long> inheritorIds;
+
+    @TableField(exist = false)
+    private String categoryName;
+
+    @TableField(exist = false)
+    private String regionName;
 
     @TableField(exist = false)
     private Long viewCount;
@@ -176,4 +183,19 @@ public class IchProject {
         this.inheritorIds = inheritorIds;
     }
 
+    public String getCategoryName() {
+        return categoryName;
+    }
+
+    public void setCategoryName(String categoryName) {
+        this.categoryName = categoryName;
+    }
+
+    public String getRegionName() {
+        return regionName;
+    }
+
+    public void setRegionName(String regionName) {
+        this.regionName = regionName;
+    }
 }

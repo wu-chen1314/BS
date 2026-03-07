@@ -64,11 +64,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import axios from 'axios'
 import request from '@/utils/request'
-import { StarFilled, Star } from '@element-plus/icons-vue'
+import { StarFilled } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 
 const router = useRouter()
@@ -101,7 +100,6 @@ const fetchFavorites = async () => {
     try {
         const res = await request.get('/favorites/list', {
             params: {
-                userId: userInfo.value.id,
                 pageNum: currentPage.value,
                 pageSize: pageSize.value
             }
@@ -125,7 +123,6 @@ const toggleCardFavorite = async (projectId: number) => {
     
     try {
         const res = await request.post('/favorites/toggle', {
-            userId: userInfo.value.id,
             projectId: projectId
         })
         

@@ -17,4 +17,14 @@ public class LoginRequest {
      * 密码（明文）
      */
     private String password;
+
+    /**
+     * 图形/计算题验证码 ID
+     */
+    private String captchaId;
+
+    /**
+     * 图形/计算题验证码答案
+     */
+    private String captchaAnswer;
 }

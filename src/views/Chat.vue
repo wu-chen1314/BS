@@ -290,6 +290,7 @@ import request from '@/utils/request'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ChatLineRound, Delete, Plus, ChatDotRound, Star, Refresh, DocumentCopy, Edit } from '@element-plus/icons-vue'
 import { marked } from 'marked'
+import { buildStaticUrl } from '@/utils/url'
 
 // 类型定义
 interface Message {
@@ -359,12 +360,7 @@ const userInfo = ref<any>({
 })
 
 const getUserAvatar = computed(() => {
-    if (userInfo.value.avatarUrl) {
-        return userInfo.value.avatarUrl.startsWith('http')
-            ? userInfo.value.avatarUrl
-            : `http://localhost:8080${userInfo.value.avatarUrl}`
-    }
-    return 'https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png'
+    return buildStaticUrl(userInfo.value.avatarUrl) || 'https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png'
 })
 
 // 工具函数
@@ -439,8 +435,6 @@ const loadUserInfo = () => {
 }
 
 const loadChatList = async () => {
-    const userId = userInfo.value?.id || userInfo.value?.userId || 1
-    console.log('loadChatList - userId:', userId)
 
     // 检查缓存（优化：如果有 activeChatId，不使用缓存）
     const now = Date.now()
@@ -451,10 +445,9 @@ const loadChatList = async () => {
     }
 
     try {
-        const headers = getAuthHeaders()
         console.log('loadChatList - 请求API:', `/chat/sessions`)
         const res = await request.get('/chat/sessions', {
-            params: { userId, limit: 20 }
+            params: { limit: 20 }
         })
         console.log('loadChatList - API响应:', res.data)
         if (res.data.code === 200 && res.data.data) {
@@ -469,15 +462,14 @@ const loadChatList = async () => {
 }
 
 const loadChatHistory = async (chatId?: number) => {
+    console.log('loadChatHistory - chatId:', chatId)
     const userId = userInfo.value?.id || userInfo.value?.userId || 1
-    console.log('loadChatHistory - userId:', userId, 'chatId:', chatId)
 
     try {
-        const headers = getAuthHeaders()
         console.log('loadChatHistory - 请求参数:', { userId, chatId, limit: 50 })
 
         const res = await request.get('/chat/history', {
-            params: { userId, chatId, limit: 50 }
+            params: { chatId, limit: 50 }
         })
         console.log('loadChatHistory - API响应:', res.data)
         if (res.data.code === 200 && res.data.data) {
@@ -510,9 +502,7 @@ const createNewChat = async () => {
     }
 
     try {
-        const headers = getAuthHeaders()
         const res = await request.post('/chat/sessions', {
-            userId,
             title: '新对话'
         })
         if (res.data.code === 200 && res.data.data) {
@@ -542,11 +532,7 @@ const deleteChat = async (chatId: number) => {
             cancelButtonText: '取消'
         })
 
-        const userId = userInfo.value?.id || userInfo.value?.userId
-
-        const res = await request.delete(`/chat/sessions/${chatId}`, {
-            params: { userId }
-        })
+        const res = await request.delete(`/chat/sessions/${chatId}`)
 
         if (res.data.code === 200) {
             chatList.value = chatList.value.filter(chat => chat.id !== chatId)
@@ -628,7 +614,6 @@ const sendMessage = async (content?: any) => {
 
         console.log('sendMessage - 请求 API:', '/chat/send')
         const res = await request.post('/chat/send', {
-            userId,
             message: messageContent,
             chatId: activeChatId.value,
             context: contextMessages
@@ -788,13 +773,10 @@ const batchDelete = async () => {
             }
         )
 
-        const userId = userInfo.value?.id || userInfo.value?.userId
 
         // 批量删除
         const deletePromises = selectedChats.value.map(chatId =>
-            request.delete(`/chat/sessions/${chatId}`, {
-                params: { userId }
-            })
+            request.delete(`/chat/sessions/${chatId}`)
         )
 
         const results = await Promise.all(deletePromises)

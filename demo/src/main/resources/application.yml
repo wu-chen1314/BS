@@ -3,32 +3,37 @@ server:
 
 spring:
   mail:
-    host: smtp.qq.com
-    username: 2084992154@qq.com # 替换为你的真实QQ邮箱
-    password: idjkyybewyxgdffi # 绝对不是QQ密码！是十几位的授权码
+    host: ${MAIL_HOST:smtp.qq.com}
+    port: ${MAIL_PORT:465}
+    protocol: ${MAIL_PROTOCOL:smtp}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
     default-encoding: UTF-8
     properties:
       mail:
         smtp:
           auth: true
+          connectiontimeout: 10000
+          timeout: 10000
+          writetimeout: 10000
           starttls:
-            enable: true
-            required: true
+            enable: ${MAIL_STARTTLS_ENABLE:false}
+            required: ${MAIL_STARTTLS_REQUIRED:false}
           ssl:
-            enable: true
+            enable: ${MAIL_SSL_ENABLE:true}
   application:
     name: ich-promotion-system
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
-    url: jdbc:mysql://localhost:3306/ich_promotion_db?serverTimezone=Asia/Shanghai&useUnicode=true&characterEncoding=utf-8&useSSL=false
-    username: root
-    password: 12345678
+    url: ${DB_URL:jdbc:mysql://localhost:3306/ich_promotion_db?serverTimezone=Asia/Shanghai&useUnicode=true&characterEncoding=utf-8&useSSL=false}
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:12345678}
   servlet:
     multipart:
       max-file-size: 100MB
       max-request-size: 100MB
-  # ✅ Bug1修复：Redis 配置必须在 spring: 下才能生效
   redis:
+    enabled: true
     host: 127.0.0.1
     port: 6379
     database: 0
@@ -47,7 +52,10 @@ mybatis-plus:
     log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
   mapper-locations: classpath*:/mapper/**/*.xml
 
-# ✅ Bug2修复：DeepSeek API Key 从配置文件读取，脱离源码
 deepseek:
   api:
-    key: sk-ea1c953852ff41498f117594e99b9507
+    key: ${DEEPSEEK_API_KEY:change-me}
+
+jwt:
+  secret: ${JWT_SECRET:ichPromotionSystemSecretKey202603021530NonHeritage}
+  expiration: 86400000

@@ -122,7 +122,7 @@
                             </div>
 
                             <el-image
-                                :src="item.coverUrl || 'https://images.unsplash.com/photo-1599839575945-a9e5af0c3fa5?q=80&w=2069&auto=format&fit=crop'"
+                                :src="buildStaticUrl(item.coverUrl) || 'https://images.unsplash.com/photo-1599839575945-a9e5af0c3fa5?q=80&w=2069&auto=format&fit=crop'"
                                 class="cover-img" fit="cover" loading="lazy" />
 
                             <div class="badge-level" :class="getLevelClass(item.protectLevel)">
@@ -159,9 +159,9 @@
                                 <div class="inheritor-info" @click="handleInheritorClick(item.id)">
                                     <span class="label">传承人:</span>
                                     <span class="value"
-                                        :class="{ 'clickable': item.inheritorNames && item.inheritorNames !== '暂无记录' }">{{
-                                            item.inheritorNames || '暂无记录' }}</span>
-                                    <el-icon v-if="item.inheritorNames && item.inheritorNames !== '暂无记录'"
+                                        :class="{ 'clickable': userInfo.role === 'admin' && item.inheritorNames && item.inheritorNames !== '\u6682\u65e0\u8bb0\u5f55' }">{{
+                                            item.inheritorNames || '\u6682\u65e0\u8bb0\u5f55' }}</span>
+                                    <el-icon v-if="userInfo.role === 'admin' && item.inheritorNames && item.inheritorNames !== '\u6682\u65e0\u8bb0\u5f55'"
                                         class="inheritor-link-icon">
                                         <Link />
                                     </el-icon>
@@ -267,10 +267,10 @@
                     </el-row>
 
                     <el-form-item label="封面图片">
-                        <el-upload class="avatar-uploader" action="http://localhost:8080/api/file/upload"
+                        <el-upload class="avatar-uploader" :action="fileUploadAction" :headers="uploadHeaders"
                             :show-file-list="false" :on-success="handleAvatarSuccess"
                             :before-upload="beforeAvatarUpload" :disabled="userInfo.role !== 'admin' && form.id">
-                            <img v-if="form.coverUrl" :src="form.coverUrl" class="avatar" />
+                            <img v-if="form.coverUrl" :src="buildStaticUrl(form.coverUrl)" class="avatar" />
                             <el-icon v-else class="avatar-uploader-icon">
                                 <Plus />
                             </el-icon>
@@ -278,7 +278,7 @@
                     </el-form-item>
 
                     <el-form-item label="宣传视频">
-                        <el-upload class="upload-demo" action="http://localhost:8080/api/file/upload"
+                        <el-upload class="upload-demo" :action="fileUploadAction" :headers="uploadHeaders"
                             :on-success="handleVideoSuccess" :before-upload="beforeVideoUpload" :show-file-list="false"
                             :disabled="userInfo.role !== 'admin' && form.id">
                             <el-button type="primary" plain round v-if="!form.videoUrl">上传视频</el-button>
@@ -288,7 +288,7 @@
                                     v-if="userInfo.role === 'admin'">移除</el-button>
                             </div>
                         </el-upload>
-                        <video v-if="form.videoUrl" :src="form.videoUrl" controls
+                        <video v-if="form.videoUrl" :src="buildStaticUrl(form.videoUrl)" controls
                             style="width: 100%; max-height: 240px; margin-top: 15px; border-radius: 8px; background: #000; box-shadow: 0 4px 12px rgba(0,0,0,0.1);"></video>
                     </el-form-item>
 
@@ -354,13 +354,20 @@
 // ✨ 注意：引入了 onUnmounted 和 ElNotification
 import { ref, reactive, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Plus, Search, Download, Star, StarFilled, ChatLineRound, VideoPlay, Delete, Clock, View, Link, TrendCharts, Bell, Top, ArrowRight } from '@element-plus/icons-vue'
+import { Plus, Search, Download, Star, StarFilled, ChatLineRound, VideoPlay, Delete, Clock, View, Link, Bell } from '@element-plus/icons-vue'
+import { QuillEditor } from '@vueup/vue-quill'
+import '@vueup/vue-quill/dist/vue-quill.snow.css'
 import axios from 'axios'
 import request from '@/utils/request'
 import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
+import { buildApiUrl, buildStaticUrl, buildWsUrl, getAuthHeaders } from '@/utils/url'
 import type { UploadProps } from 'element-plus'
-import * as echarts from 'echarts'
-import { Quill } from '@vueup/vue-quill'
+import { BarChart, PieChart } from 'echarts/charts'
+import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/components'
+import { use, init, getInstanceByDom, graphic } from 'echarts/core'
+import { CanvasRenderer } from 'echarts/renderers'
+
+use([BarChart, PieChart, GridComponent, LegendComponent, TooltipComponent, CanvasRenderer])
 
 // 路由
 const route = useRoute()
@@ -406,6 +413,9 @@ const onQuillReady = (quill: any) => {
     })
 }
 
+const fileUploadAction = buildApiUrl('/file/upload')
+const uploadHeaders = getAuthHeaders()
+
 const form = reactive({
     id: undefined,
     name: '',
@@ -424,7 +434,7 @@ let ws: WebSocket | null = null
 
 const initWebSocket = () => {
     // 建立连接 (注意端口号需与 SpringBoot 保持一致)
-    ws = new WebSocket('ws://localhost:8080/ws/project')
+    ws = new WebSocket(buildWsUrl('/ws/project'))
 
     ws.onopen = () => {
         console.log('✅ [WebSocket] 实时数据同步管道已连接')
@@ -471,40 +481,14 @@ const fetchData = async () => {
                 protectLevel: searchLevel.value
             }
         })
-        if (res.data.code === 200) {
-            const records = res.data.data.records
-
-            // 为每个项目获取传承人信息
-            for (const item of records) {
-                try {
-                    // 使用现有的传承人分页接口，通过projectId过滤
-                    const inheritorRes = await request.get('/inheritors/page', {
-                        params: { projectId: item.id, pageNum: 1, pageSize: 100 }
-                    })
-                    if (inheritorRes.data.code === 200 && inheritorRes.data.data && inheritorRes.data.data.records) {
-                        // 将传承人姓名拼接成字符串
-                        const inheritorNames = inheritorRes.data.data.records.map((inheritor: any) => inheritor.name).join('、')
-                        item.inheritorNames = inheritorNames || '暂无记录'
-                    } else {
-                        item.inheritorNames = '暂无记录'
-                    }
-                } catch (error) {
-                    console.error(`获取项目 ${item.id} 的传承人信息失败`, error)
-                    item.inheritorNames = '暂无记录'
-                }
-            }
-
-            tableData.value = records.map((item: any) => ({
-                ...item, selected: false
-            }))
-            total.value = res.data.data.total
-            multipleSelection.value = []
-        } else {
-            // 处理API返回错误
-            ElMessage.error(res.data.msg || '获取项目列表失败')
-            tableData.value = []
-            total.value = 0
-        }
+        const page = res.data.data || { records: [], total: 0 }
+        tableData.value = (page.records || []).map((item: any) => ({
+            ...item,
+            inheritorNames: item.inheritorNames || '暂无记录',
+            selected: false
+        }))
+        total.value = page.total || 0
+        multipleSelection.value = []
     } catch (error) {
         console.error('获取项目列表失败', error)
         ElMessage.error('获取项目列表失败，请稍后重试')
@@ -515,15 +499,33 @@ const fetchData = async () => {
     }
 }
 
+const loadProjectDetail = async (projectId: number) => {
+    const current = tableData.value.find(item => item.id === projectId)
+    if (current) {
+        handleEdit(current)
+        return
+    }
+    try {
+        const res = await request.get(`/projects/${projectId}`)
+        if (res.data.code === 200) {
+            handleEdit({ ...res.data.data, inheritorNames: res.data.data?.inheritorNames || '暂无记录' })
+        }
+    } catch (error) {
+        console.error(`获取项目 ${projectId} 详情失败`, error)
+        ElMessage.error('打开项目详情失败')
+    }
+}
+
+
 // 互动功能
 const checkFavoriteStatus = async (projectId: number) => {
     if (!userInfo.value.id) return
-    const res = await request.get('/favorites/check', { params: { userId: userInfo.value.id, projectId } })
+    const res = await request.get('/favorites/check', { params: { projectId } })
     isFavorited.value = res.data.data
 }
 
 const toggleFavorite = async () => {
-    const res = await request.post('/favorites/toggle', { userId: userInfo.value.id, projectId: form.id })
+    const res = await request.post('/favorites/toggle', { projectId: form.id })
     isFavorited.value = res.data.data
     isFavorited.value ? ElMessage.success('已加入您的雅集收藏') : ElMessage.info('已移出收藏')
     // 更新收藏项目列表
@@ -535,7 +537,7 @@ const loadFavoritedProjects = async () => {
     if (!userInfo.value.id) return
     try {
         const res = await request.get('/favorites/list', {
-            params: { userId: userInfo.value.id, pageNum: 1, pageSize: 100 }
+            params: { pageNum: 1, pageSize: 100 }
         })
         if (res.data.code === 200) {
             favoritedProjects.value = res.data.data.records.map((item: any) => item.id)
@@ -548,7 +550,7 @@ const loadFavoritedProjects = async () => {
 // 切换卡片上的收藏状态
 const toggleCardFavorite = async (projectId: number) => {
     if (!userInfo.value.id) return ElMessage.warning('请先登录')
-    const res = await request.post('/favorites/toggle', { userId: userInfo.value.id, projectId })
+    const res = await request.post('/favorites/toggle', { projectId })
     const isFav = res.data.data
     isFav ? ElMessage.success('已加入您的雅集收藏') : ElMessage.info('已移出收藏')
     // 更新收藏项目列表
@@ -616,7 +618,7 @@ const fetchComments = async (projectId: number) => {
 
 const submitComment = async () => {
     if (!newComment.value.trim()) return ElMessage.warning('内容不能为空')
-    await request.post('/comments/add', { projectId: form.id, userId: userInfo.value.id, content: newComment.value })
+    await request.post('/comments/add', { projectId: form.id, content: newComment.value })
     ElMessage.success('留言成功')
     newComment.value = ''
     fetchComments(form.id!)
@@ -649,17 +651,16 @@ const saveProject = async () => {
     if (!form.name) return ElMessage.warning('项目名称为必填项')
     btnLoading.value = true
     try {
-        const req = form.id ? axios.put : axios.post
-        const url = `http://localhost:8080/api/projects/${form.id ? 'update' : 'add'}`
-        const res = await req(url, form)
+        const res = form.id ? await request.put('/projects/update', form) : await request.post('/projects/add', form)
         if (res.data.code === 200) {
             ElMessage.success('信息已存档')
-            dialogVisible.value = false;
-            fetchData();
-            initCharts();
+            dialogVisible.value = false
+            fetchData()
+            initCharts()
         } else ElMessage.error(res.data.msg)
     } finally { btnLoading.value = false }
 }
+
 
 const handleCardSelectionChange = () => {
     multipleSelection.value = tableData.value.filter(item => item.selected).map(item => item.id)
@@ -700,13 +701,12 @@ const uploadQuillImage = async (e: any) => {
         const res = await request.post('/file/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
         if (res.data.code === 200) {
             const quill = quillRef.value.getQuill(); const range = quill.getSelection(true)
-            quill.insertEmbed(range.index, 'image', res.data.data); quill.setSelection(range.index + 1)
+            quill.insertEmbed(range.index, 'image', buildStaticUrl(res.data.data)); quill.setSelection(range.index + 1)
         }
     } finally { e.target.value = '' }
 }
 
 // 其他工具方法
-// 搜索功能
 const handleSearch = async () => {
     currentPage.value = 1
 
@@ -730,25 +730,44 @@ const handlePageChange = (val: number) => { currentPage.value = val; fetchData()
 
 // 点击传承人跳转到传承人管理页面
 const handleInheritorClick = (projectId: number) => {
-    // 跳转到传承人管理页面，并传递项目ID作为参数
+    if (userInfo.value.role !== 'admin') return
     router.push({
         path: '/inheritor',
-        query: { projectId: projectId }
+        query: { projectId }
     })
 }
 
+
 const getLevelClass = (level: string) => {
-    const map: any = { '国家级': 'level-national', '省级': 'level-provincial', '市级': 'level-city', '县级': 'level-county' }
+    const map: Record<string, string> = { '国家级': 'level-national', '省级': 'level-provincial', '市级': 'level-city', '县级': 'level-county' }
     return map[level] || 'level-county'
 }
-// 处理头像URL，确保相对路径也能正确显示 (✨ 修复：显式指定类型)
+
 const getAvatarUrl = (avatarUrl: string | null) => {
-    if (avatarUrl) {
-        return avatarUrl.startsWith('http') ? avatarUrl : `http://localhost:8080${avatarUrl}`;
+    return buildStaticUrl(avatarUrl) || 'https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png'
+}
+
+const handleExport = async () => {
+    try {
+        const response = await axios.get(buildApiUrl('/projects/export'), { responseType: 'blob', headers: getAuthHeaders() })
+        const blob = new Blob([response.data], { type: response.headers['content-type'] || 'text/csv;charset=utf-8' })
+        const downloadUrl = window.URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        const disposition = response.headers['content-disposition'] || ''
+        const matchedName = disposition.match(/filename\*=UTF-8''([^;]+)|filename=([^;]+)/i)
+        const filename = decodeURIComponent((matchedName?.[1] || matchedName?.[2] || '非遗项目名录.csv').replace(/"/g, '').trim())
+        link.href = downloadUrl
+        link.download = filename
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        window.URL.revokeObjectURL(downloadUrl)
+        ElMessage.success('导出成功')
+    } catch (error) {
+        console.error('导出项目失败', error)
+        ElMessage.error('导出失败，请稍后重试')
     }
-    return 'https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png';
-};
-const handleExport = () => { window.open('http://localhost:8080/api/projects/export') }
+}
 
 // --- 高级质感 ECharts 初始化 ---
 const initCharts = async () => {
@@ -759,8 +778,8 @@ const initCharts = async () => {
 
     const pieChartDom = document.getElementById('pieChart')
     if (pieChartDom) {
-        echarts.getInstanceByDom(pieChartDom)?.dispose()
-        const myPieChart = echarts.init(pieChartDom)
+        getInstanceByDom(pieChartDom)?.dispose()
+        const myPieChart = init(pieChartDom)
         try {
             const res = await request.get('/statistics/level')
             if (res.data.code === 200) {
@@ -784,8 +803,8 @@ const initCharts = async () => {
 
     const barChartDom = document.getElementById('barChart')
     if (barChartDom) {
-        echarts.getInstanceByDom(barChartDom)?.dispose()
-        const myBarChart = echarts.init(barChartDom)
+        getInstanceByDom(barChartDom)?.dispose()
+        const myBarChart = init(barChartDom)
         try {
             const res = await request.get('/statistics/status')
             if (res.data.code === 200) {
@@ -811,7 +830,7 @@ const initCharts = async () => {
                         itemStyle: {
                             borderRadius: [6, 6, 0, 0],
                             // 故宫红到暖珊瑚色的高级渐变
-                            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                            color: new graphic.LinearGradient(0, 0, 0, 1, [
                                 { offset: 0, color: '#e74c3c' },
                                 { offset: 1, color: '#c41e3a' }
                             ])
@@ -824,67 +843,59 @@ const initCharts = async () => {
 }
 
 // 窗口自适应
-window.addEventListener('resize', () => {
+const resizeCharts = () => {
     const pieChart = document.getElementById('pieChart')
     const barChart = document.getElementById('barChart')
     if (pieChart) {
-        echarts.getInstanceByDom(pieChart as HTMLElement)?.resize()
+        getInstanceByDom(pieChart as HTMLElement)?.resize()
     }
     if (barChart) {
-        echarts.getInstanceByDom(barChart as HTMLElement)?.resize()
+        getInstanceByDom(barChart as HTMLElement)?.resize()
     }
-})
+}
 
-// ================== 生命周期钩子 ==================
-onMounted(() => {
+onMounted(async () => {
     const userStr = sessionStorage.getItem('user')
     if (userStr) userInfo.value = JSON.parse(userStr)
 
-    // 初始化 WebSocket 实时同步
     initWebSocket()
+    window.addEventListener('resize', resizeCharts)
 
-    // 获取初始数据
-    fetchData()
-    initCharts()
-    loadFavoritedProjects()
-    loadSearchHistory()
+    await fetchData()
+    await initCharts()
+    await loadFavoritedProjects()
+    await loadSearchHistory()
 
-    // 处理路由参数，从热度排行榜页面跳转过来时打开对应项目
-    if (route.query.id) {
-        const projectId = parseInt(route.query.id as string)
-        // 查找对应项目并打开详情
-        setTimeout(() => {
-            const project = tableData.value.find(item => item.id === projectId)
-            if (project) {
-                handleEdit(project)
-            }
-        }, 500)
+    const projectId = Number(route.query.id)
+    if (Number.isFinite(projectId) && projectId > 0) {
+        await loadProjectDetail(projectId)
     }
 })
 
 onUnmounted(() => {
-    // ✨ 离开页面时安全关闭连接，防止内存泄漏
     if (ws) {
         ws.close()
     }
+    window.removeEventListener('resize', resizeCharts)
 })
 
+
 // ✨ 新增：非遗类别 ID 到名称的转换映射
+// 非遗类别 ID 到名称的映射
 const getCategoryName = (id: number) => {
     const categoryMap: Record<number, string> = {
         1: '民间文学',
-        2: '传统技艺',
+        2: '传统音乐',
         3: '传统舞蹈',
         4: '传统戏剧',
         5: '曲艺',
         6: '传统体育、游艺与杂技',
         7: '传统美术',
-        8: '传统医药',
-        9: '民俗',
-        10: '传统音乐'
-    }
-    // 如果匹配不到，默认显示“其他类别”
-    return categoryMap[id] || '其他类别'
+        8: '传统技艺',
+        9: '传统医药',
+        10: '民俗'
+    };
+    return categoryMap[id] || '其他类别';
 }
 </script>
 

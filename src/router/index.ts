@@ -1,16 +1,16 @@
 import { createRouter, createWebHistory } from "vue-router";
-import Layout from "../views/Layout.vue"; // 使用相对路径 ..
-import Login from "../views/Login.vue"; // 使用相对路径 ..
+
+const Layout = () => import("../views/Layout.vue");
+const Login = () => import("../views/Login.vue");
 
 const router = createRouter({
   history: createWebHistory(),
-  //先跳到login页面，再跳到home页面
-
   routes: [
     {
       path: "/login",
       name: "login",
       component: Login,
+      meta: { title: "登录" },
     },
     {
       path: "/",
@@ -21,21 +21,37 @@ const router = createRouter({
           path: "home",
           name: "home",
           component: () => import("../views/Home.vue"),
+          meta: { title: "非遗项目" },
+        },
+        {
+          path: "curation",
+          name: "curation",
+          component: () => import("../views/Curation.vue"),
+          meta: { title: "主题策展" },
+        },
+        {
+          path: "heritage-trail",
+          name: "heritage-trail",
+          component: () => import("../views/HeritageTrail.vue"),
+          meta: { title: "非遗路线" },
         },
         {
           path: "inheritor",
           name: "inheritor",
           component: () => import("../views/Inheritor.vue"),
+          meta: { title: "传承人管理", requireAdmin: true },
         },
         {
           path: "user",
           name: "user",
           component: () => import("../views/User.vue"),
+          meta: { title: "用户管理", requireAdmin: true },
         },
         {
           path: "profile",
           name: "profile",
           component: () => import("../views/Profile.vue"),
+          meta: { title: "个人中心" },
         },
         {
           path: "favorites",
@@ -53,11 +69,17 @@ const router = createRouter({
           path: "chat",
           name: "chat",
           component: () => import("../views/Chat.vue"),
-          meta: { title: "AI 聊天" },
+          meta: { title: "AI 助手" },
+        },
+        {
+          path: "region-category",
+          name: "region-category",
+          component: () => import("../views/RegionCategory.vue"),
+          meta: { title: "地区分类" },
         },
         {
           path: "person",
-          name: "Person",
+          name: "person",
           component: () => import("../views/Profile.vue"),
           meta: { title: "个人中心" },
         },
@@ -66,18 +88,31 @@ const router = createRouter({
   ],
 });
 
-// 路由守卫
 router.beforeEach((to, from, next) => {
-  const user = sessionStorage.getItem("user");
-  // 检查是否是登录页面或公开页面
+  const userStr = sessionStorage.getItem("user");
   const publicPages = ["/login"];
   const isPublicPage = publicPages.includes(to.path);
 
-  if (!isPublicPage && !user) {
+  if (!isPublicPage && !userStr) {
     next({ name: "login" });
-  } else {
-    next();
+    return;
   }
+
+  if (to.meta.requireAdmin) {
+    try {
+      const user = userStr ? JSON.parse(userStr) : null;
+      if (user?.role !== "admin") {
+        next({ path: "/home" });
+        return;
+      }
+    } catch (error) {
+      console.error("Failed to parse current user", error);
+      next({ name: "login" });
+      return;
+    }
+  }
+
+  next();
 });
 
 export default router;

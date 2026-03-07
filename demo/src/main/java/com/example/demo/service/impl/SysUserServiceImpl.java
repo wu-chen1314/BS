@@ -6,10 +6,10 @@ import com.example.demo.common.Result;
 import com.example.demo.entity.SysUser;
 import com.example.demo.mapper.SysUserMapper;
 import com.example.demo.service.SysUserService;
+import com.example.demo.util.PasswordUtil;
 import org.springframework.stereotype.Service;
-import org.springframework.util.DigestUtils;
+import org.springframework.util.StringUtils;
 
-import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.Map;
 
@@ -18,66 +18,73 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
 
     @Override
     public Result<SysUser> register(SysUser user) {
-        // 检查用户名是否存在
-        QueryWrapper<SysUser> query = new QueryWrapper<>();
-        query.eq("username", user.getUsername());
-        SysUser existUser = this.getOne(query);
-        
+        if (user == null || !StringUtils.hasText(user.getUsername()) || !StringUtils.hasText(user.getPasswordHash())) {
+            return Result.error("用户名或密码不能为空");
+        }
+
+        QueryWrapper<SysUser> usernameQuery = new QueryWrapper<>();
+        usernameQuery.eq("username", user.getUsername().trim());
+        SysUser existUser = this.getOne(usernameQuery);
         if (existUser != null) {
             return Result.error("用户名已存在");
         }
-        
-        // 加密密码
-        String passwordHash = DigestUtils.md5DigestAsHex(user.getPasswordHash().getBytes(StandardCharsets.UTF_8));
+
+        if (StringUtils.hasText(user.getEmail())) {
+            QueryWrapper<SysUser> emailQuery = new QueryWrapper<>();
+            emailQuery.eq("email", user.getEmail().trim());
+            if (this.getOne(emailQuery) != null) {
+                return Result.error("邮箱已存在");
+            }
+        }
+
+        String passwordHash = PasswordUtil.encode(user.getPasswordHash());
+        user.setUsername(user.getUsername().trim());
         user.setPasswordHash(passwordHash);
-        
-        // 设置默认值
+        user.setNickname(StringUtils.hasText(user.getNickname()) ? user.getNickname().trim() : user.getUsername());
+        user.setEmail(StringUtils.hasText(user.getEmail()) ? user.getEmail().trim() : null);
         user.setRole("user");
         user.setStatus(1);
         user.setCreatedAt(LocalDateTime.now());
         user.setUpdatedAt(LocalDateTime.now());
-        
-        // 保存用户
+
         if (this.save(user)) {
-            user.setPasswordHash(null); // 不返回密码
+            user.setPasswordHash(null);
             return Result.success(user);
-        } else {
-            return Result.error("注册失败");
         }
+        return Result.error("注册失败");
     }
 
     @Override
     public Result<SysUser> login(SysUser user) {
-        // 验证输入参数
         if (user.getUsername() == null || user.getPasswordHash() == null) {
             return Result.error("用户名或密码不能为空");
         }
-        
-        // 查询用户
+
         QueryWrapper<SysUser> query = new QueryWrapper<>();
         query.eq("username", user.getUsername());
         SysUser existUser = this.getOne(query);
-        
+
         if (existUser == null) {
             return Result.error("用户名或密码错误");
         }
-        
-        // 验证密码
-        String passwordHash = DigestUtils.md5DigestAsHex(user.getPasswordHash().getBytes(StandardCharsets.UTF_8));
-        if (!existUser.getPasswordHash().equals(passwordHash)) {
+
+        // 支持旧版 MD5 与新版 BCrypt 的校验
+        if (!PasswordUtil.matches(user.getPasswordHash(), existUser.getPasswordHash())) {
             return Result.error("用户名或密码错误");
         }
-        
-        // 检查用户状态
+
+        // 如果仍为旧版 MD5，登录成功后自动迁移为 BCrypt
+        if (PasswordUtil.isLegacyMd5(existUser.getPasswordHash())) {
+            existUser.setPasswordHash(PasswordUtil.encode(user.getPasswordHash()));
+        }
+
         if (existUser.getStatus() == 0) {
             return Result.error("用户已被禁用");
         }
-        
-        // 更新最后登录时间
+
         existUser.setLastLoginAt(LocalDateTime.now());
         this.updateById(existUser);
-        
-        // 不返回密码
+
         existUser.setPasswordHash(null);
         return Result.success(existUser);
     }
@@ -85,29 +92,31 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
     @Override
     public Result<Boolean> resetPassword(Map<String, String> params) {
         String email = params.get("email");
-        String code = params.get("code");
+        String username = params.get("username");
         String newPassword = params.get("newPassword");
-        
-        // 查询用户
+
+        if (!StringUtils.hasText(email) || !StringUtils.hasText(newPassword)) {
+            return Result.error("参数不完整");
+        }
+
         QueryWrapper<SysUser> query = new QueryWrapper<>();
-        query.eq("email", email);
+        query.eq("email", email.trim());
+        if (StringUtils.hasText(username)) {
+            query.eq("username", username.trim());
+        }
         SysUser user = this.getOne(query);
-        
+
         if (user == null) {
             return Result.error("用户不存在");
         }
-        
-        // TODO: 验证验证码
-        
-        // 更新密码
-        String passwordHash = DigestUtils.md5DigestAsHex(newPassword.getBytes(StandardCharsets.UTF_8));
+
+        String passwordHash = PasswordUtil.encode(newPassword);
         user.setPasswordHash(passwordHash);
         user.setUpdatedAt(LocalDateTime.now());
-        
+
         if (this.updateById(user)) {
             return Result.success(true);
-        } else {
-            return Result.error("重置密码失败");
         }
+        return Result.error("重置密码失败");
     }
 }

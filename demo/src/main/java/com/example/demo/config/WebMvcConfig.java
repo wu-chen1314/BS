@@ -11,17 +11,15 @@ public class WebMvcConfig implements WebMvcConfigurer {
     @Override
     public void addCorsMappings(CorsRegistry registry) {
         registry.addMapping("/**")
-                // ✨✨ 核心修改：不要写 "*"，直接写死前端的地址
-                .allowedOrigins("http://localhost:5173")
+                .allowedOriginPatterns("http://localhost:*", "http://127.0.0.1:*")
                 .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
                 .allowedHeaders("*")
-                .allowCredentials(true) // 允许携带 Cookie/凭证
+                .allowCredentials(true)
                 .maxAge(3600);
     }
 
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
-        // 配置静态资源映射，使上传的文件可以通过 /files/ 路径访问
         String uploadDir = System.getProperty("user.dir") + "/files/";
         registry.addResourceHandler("/files/**")
                 .addResourceLocations("file:" + uploadDir);

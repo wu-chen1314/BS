@@ -7,11 +7,17 @@ import com.example.demo.entity.AppFavorite;
 import com.example.demo.entity.IchProject;
 import com.example.demo.service.AppFavoriteService;
 import com.example.demo.service.IchProjectService;
+import com.example.demo.util.RequestAuthUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
+import javax.servlet.http.HttpServletRequest;
 import java.time.LocalDateTime;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @RestController
@@ -24,63 +30,93 @@ public class AppFavoriteController {
     @Autowired
     private IchProjectService projectService;
 
-    // 切换收藏状态
+    @Autowired
+    private RequestAuthUtil requestAuthUtil;
+
     @PostMapping("/toggle")
-    public Result<Boolean> toggleFavorite(@RequestBody AppFavorite favorite) {
-        if (favorite.getUserId() == null || favorite.getProjectId() == null) {
+    public Result<Boolean> toggleFavorite(@RequestBody AppFavorite favorite, HttpServletRequest request) {
+        Long currentUserId = requestAuthUtil.getCurrentUserId(request);
+        if (currentUserId == null) {
+            return Result.error("未登录或令牌无效");
+        }
+        if (favorite.getProjectId() == null) {
             return Result.error("参数错误");
         }
-        LambdaQueryWrapper<AppFavorite> query = new LambdaQueryWrapper<>();
-        query.eq(AppFavorite::getUserId, favorite.getUserId())
+
+        LambdaQueryWrapper<AppFavorite> query = new LambdaQueryWrapper<AppFavorite>()
+                .eq(AppFavorite::getUserId, currentUserId)
                 .eq(AppFavorite::getProjectId, favorite.getProjectId());
-        AppFavorite exist = favoriteService.getOne(query);
-        if (exist != null) {
-            favoriteService.removeById(exist.getId());
+        AppFavorite existing = favoriteService.getOne(query);
+        if (existing != null) {
+            favoriteService.removeById(existing.getId());
             return Result.success(false);
-        } else {
-            favorite.setCreatedAt(LocalDateTime.now());
-            favoriteService.save(favorite);
-            return Result.success(true);
         }
+
+        favorite.setUserId(currentUserId);
+        favorite.setCreatedAt(LocalDateTime.now());
+        favoriteService.save(favorite);
+        return Result.success(true);
     }
 
-    // 查询某用户是否收藏了某项目
     @GetMapping("/check")
-    public Result<Boolean> checkFavorite(@RequestParam Long userId, @RequestParam Long projectId) {
+    public Result<Boolean> checkFavorite(@RequestParam Long projectId, HttpServletRequest request) {
+        Long currentUserId = requestAuthUtil.getCurrentUserId(request);
+        if (currentUserId == null) {
+            return Result.error("未登录或令牌无效");
+        }
+
         long count = favoriteService.count(new LambdaQueryWrapper<AppFavorite>()
-                .eq(AppFavorite::getUserId, userId)
+                .eq(AppFavorite::getUserId, currentUserId)
                 .eq(AppFavorite::getProjectId, projectId));
         return Result.success(count > 0);
     }
 
-    /**
-     * ✨ 新功能3：分页查询用户的收藏列表，并关联返回项目基本信息
-     * GET /api/favorites/list?userId=1&pageNum=1&pageSize=10
-     */
     @GetMapping("/list")
-    public Result<Page<IchProject>> getFavoriteList(@RequestParam Long userId,
-            @RequestParam(defaultValue = "1") Integer pageNum,
-            @RequestParam(defaultValue = "10") Integer pageSize) {
-        if (userId == null) {
-            return Result.error("用户ID不能为空");
+    public Result<Page<IchProject>> getFavoriteList(@RequestParam(defaultValue = "1") Integer pageNum,
+                                                    @RequestParam(defaultValue = "10") Integer pageSize,
+                                                    HttpServletRequest request) {
+        Long currentUserId = requestAuthUtil.getCurrentUserId(request);
+        if (currentUserId == null) {
+            return Result.error("未登录或令牌无效");
         }
-        // 1. 查出该用户的所有收藏记录（按时间倒序）
-        List<AppFavorite> favorites = favoriteService.list(
-                new LambdaQueryWrapper<AppFavorite>()
-                        .eq(AppFavorite::getUserId, userId)
-                        .orderByDesc(AppFavorite::getCreatedAt));
+
+        List<AppFavorite> favorites = favoriteService.list(new LambdaQueryWrapper<AppFavorite>()
+                .eq(AppFavorite::getUserId, currentUserId)
+                .orderByDesc(AppFavorite::getCreatedAt));
+
+        Page<IchProject> page = new Page<>(pageNum, pageSize, favorites.size());
         if (favorites.isEmpty()) {
-            return Result.success(new Page<>());
+            page.setRecords(Collections.emptyList());
+            return Result.success(page);
         }
-        // 2. 提取项目ID列表
-        List<Long> projectIds = favorites.stream()
+
+        List<Long> orderedProjectIds = favorites.stream()
                 .map(AppFavorite::getProjectId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .collect(Collectors.toList());
+        if (orderedProjectIds.isEmpty()) {
+            page.setRecords(Collections.emptyList());
+            return Result.success(page);
+        }
+
+        List<IchProject> projects = projectService.listByIds(orderedProjectIds);
+        projectService.populateProjectRelations(projects);
+        Map<Long, IchProject> projectMap = projects.stream()
+                .collect(Collectors.toMap(IchProject::getId, Function.identity(), (left, right) -> left));
+
+        List<IchProject> orderedProjects = orderedProjectIds.stream()
+                .map(projectMap::get)
+                .filter(Objects::nonNull)
                 .collect(Collectors.toList());
 
-        // 3. 分页查询这批项目（保持收藏时间倒序）
-        Page<IchProject> page = projectService.page(
-                new Page<>(pageNum, pageSize),
-                new LambdaQueryWrapper<IchProject>().in(IchProject::getId, projectIds));
+        int fromIndex = Math.max((pageNum - 1) * pageSize, 0);
+        int toIndex = Math.min(fromIndex + pageSize, orderedProjects.size());
+        if (fromIndex >= orderedProjects.size()) {
+            page.setRecords(Collections.emptyList());
+        } else {
+            page.setRecords(orderedProjects.subList(fromIndex, toIndex));
+        }
         return Result.success(page);
     }
 }

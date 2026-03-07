@@ -7,14 +7,16 @@ import cn.hutool.json.JSONUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.example.demo.common.Result;
-import com.example.demo.entity.IchInheritor;
 import com.example.demo.entity.IchProject;
-import com.example.demo.service.IchInheritorService;
 import com.example.demo.service.IchProjectService;
+import com.example.demo.util.RequestAuthUtil;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.web.bind.annotation.*;
 
+import javax.servlet.http.HttpServletRequest;
+import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
@@ -24,39 +26,41 @@ import java.util.stream.Collectors;
 @RequestMapping("/api/projects")
 public class IchProjectController {
 
-    @Autowired
-    private IchProjectService projectService;
-
-    @Autowired
-    private IchInheritorService inheritorService;
-
-    @Autowired
-    private StringRedisTemplate stringRedisTemplate;
-
     private static final String PROJECT_PAGE_CACHE_PREFIX = "ICH:PROJECT:PAGE:";
     private static final String ECHARTS_DATA_KEY = "ICH:STATISTICS:HOME_DATA";
 
-    // ================== 查询操作 (高级缓存架构) ==================
+    @Autowired
+    private IchProjectService projectService;
+
+    @Autowired(required = false)
+    @Qualifier("stringRedisTemplate")
+    private StringRedisTemplate stringRedisTemplate;
+
+    @Autowired
+    private RequestAuthUtil requestAuthUtil;
 
     @GetMapping("/page")
     public Result<Page<IchProject>> page(@RequestParam(defaultValue = "1") Integer pageNum,
-            @RequestParam(defaultValue = "10") Integer pageSize,
-            @RequestParam(required = false) String name,
-            @RequestParam(required = false) String protectLevel) {
+                                         @RequestParam(defaultValue = "10") Integer pageSize,
+                                         @RequestParam(required = false) String name,
+                                         @RequestParam(required = false) String protectLevel) {
 
         String queryKey = PROJECT_PAGE_CACHE_PREFIX + pageNum + "_" + pageSize + "_" +
                 (StrUtil.isBlank(name) ? "all" : name) + "_" +
                 (StrUtil.isBlank(protectLevel) ? "all" : protectLevel);
 
-        String cacheData = stringRedisTemplate.opsForValue().get(queryKey);
-        if (StrUtil.isNotBlank(cacheData)) {
-            System.out.println("【非遗项目列表】🚀 命中 Redis 缓存");
-            Page<IchProject> cachedPage = JSONUtil.toBean(cacheData, new TypeReference<Page<IchProject>>() {
-            }, false);
-            return Result.success(cachedPage);
+        if (stringRedisTemplate != null) {
+            try {
+                String cacheData = stringRedisTemplate.opsForValue().get(queryKey);
+                if (StrUtil.isNotBlank(cacheData)) {
+                    Page<IchProject> cachedPage = JSONUtil.toBean(cacheData, new TypeReference<Page<IchProject>>() { }, false);
+                    return Result.success(cachedPage);
+                }
+            } catch (Exception ignored) {
+                // Fall back to DB when Redis is unavailable.
+            }
         }
 
-        System.out.println("【非遗项目列表】🐌 缓存未命中，查询 MySQL 数据库...");
         QueryWrapper<IchProject> query = new QueryWrapper<>();
         if (StrUtil.isNotBlank(name)) {
             query.like("name", name);
@@ -67,75 +71,107 @@ public class IchProjectController {
         query.orderByDesc("id");
 
         Page<IchProject> pageResult = projectService.pageWithViewCount(new Page<>(pageNum, pageSize), query);
-
         if (pageResult.getRecords() == null || pageResult.getRecords().isEmpty()) {
-            System.out.println("【非遗项目列表】🛡️ 触发防缓存穿透，缓存空对象，TTL 1分钟");
-            stringRedisTemplate.opsForValue().set(queryKey, JSONUtil.toJsonStr(pageResult), 1, TimeUnit.MINUTES);
+            cachePage(queryKey, pageResult, 1, TimeUnit.MINUTES);
             return Result.success(pageResult);
         }
 
-        pageResult.getRecords().forEach(project -> {
-            List<IchInheritor> inheritors = inheritorService.list(
-                    new QueryWrapper<IchInheritor>().eq("project_id", project.getId()));
-            String names = inheritors.stream().map(IchInheritor::getName).collect(Collectors.joining(", "));
-            project.setInheritorNames(names);
-            List<Long> ids = inheritors.stream().map(IchInheritor::getId).collect(Collectors.toList());
-            project.setInheritorIds(ids);
-        });
-
-        long randomMinutes = RandomUtil.randomInt(1, 6);
-        stringRedisTemplate.opsForValue().set(queryKey, JSONUtil.toJsonStr(pageResult), 30 + randomMinutes,
-                TimeUnit.MINUTES);
-
+        projectService.populateProjectRelations(pageResult.getRecords());
+        cachePage(queryKey, pageResult, 30 + RandomUtil.randomInt(1, 6), TimeUnit.MINUTES);
         return Result.success(pageResult);
     }
 
-    // ================== 增删改操作 ==================
+    @GetMapping("/list")
+    public Result<List<IchProject>> list() {
+        QueryWrapper<IchProject> query = new QueryWrapper<>();
+        query.select("id", "name");
+        query.orderByDesc("id");
+        return Result.success(projectService.list(query));
+    }
+
+    @GetMapping("/{id}")
+    public Result<IchProject> detail(@PathVariable Long id) {
+        IchProject project = projectService.getProjectWithDetails(id);
+        if (project == null) {
+            return Result.error("Project not found");
+        }
+        return Result.success(project);
+    }
 
     @PostMapping("/add")
-    public Result<Boolean> add(@RequestBody IchProject project) {
-        // ✅ Bug6修复：调用带 @Transactional 的 Service 方法
-        Result<Boolean> res = projectService.saveProjectWithInheritors(project);
-        if (Boolean.TRUE.equals(res.getData()))
+    public Result<Boolean> add(@RequestBody IchProject project, HttpServletRequest request) {
+        if (!requestAuthUtil.isAdmin(request)) {
+            return Result.error("无权限新增项目");
+        }
+        Result<Boolean> result = projectService.saveProjectWithInheritors(project);
+        if (Boolean.TRUE.equals(result.getData())) {
             clearProjectCache();
-        return res;
+        }
+        return result;
     }
 
     @PutMapping("/update")
-    public Result<Boolean> update(@RequestBody IchProject project) {
-        Result<Boolean> res = projectService.saveProjectWithInheritors(project);
-        if (Boolean.TRUE.equals(res.getData()))
+    public Result<Boolean> update(@RequestBody IchProject project, HttpServletRequest request) {
+        if (!requestAuthUtil.isAdmin(request)) {
+            return Result.error("无权限修改项目");
+        }
+        Result<Boolean> result = projectService.saveProjectWithInheritors(project);
+        if (Boolean.TRUE.equals(result.getData())) {
             clearProjectCache();
-        return res;
+        }
+        return result;
     }
 
     @DeleteMapping("/delete/{id}")
-    public Result<Boolean> delete(@PathVariable Long id) {
-        boolean success = projectService.removeById(id);
-        if (success)
+    public Result<Boolean> delete(@PathVariable Long id, HttpServletRequest request) {
+        if (!requestAuthUtil.isAdmin(request)) {
+            return Result.error("无权限删除项目");
+        }
+        boolean success = projectService.deleteProjectsWithRelations(Collections.singletonList(id));
+        if (success) {
             clearProjectCache();
+        }
         return Result.success(success);
     }
 
     @DeleteMapping("/delete/batch")
-    public Result<Boolean> deleteBatch(@RequestBody List<Integer> ids) {
-        boolean success = projectService.removeByIds(ids);
-        if (success)
+    public Result<Boolean> deleteBatch(@RequestBody List<Integer> ids, HttpServletRequest request) {
+        if (!requestAuthUtil.isAdmin(request)) {
+            return Result.error("无权限批量删除项目");
+        }
+        List<Long> longIds = ids == null ? Collections.emptyList()
+                : ids.stream().map(Integer::longValue).collect(Collectors.toList());
+        boolean success = projectService.deleteProjectsWithRelations(longIds);
+        if (success) {
             clearProjectCache();
+        }
         return Result.success(success);
     }
 
-    // ================== 缓存清理器 ==================
+    private void cachePage(String queryKey, Page<IchProject> pageResult, long ttl, TimeUnit unit) {
+        if (stringRedisTemplate == null) {
+            return;
+        }
+        try {
+            stringRedisTemplate.opsForValue().set(queryKey, JSONUtil.toJsonStr(pageResult), ttl, unit);
+        } catch (Exception ignored) {
+            // Ignore cache failures when Redis is unavailable.
+        }
+    }
 
     private void clearProjectCache() {
-        Set<String> keys = stringRedisTemplate.keys(PROJECT_PAGE_CACHE_PREFIX + "*");
-        if (keys != null && !keys.isEmpty()) {
-            stringRedisTemplate.delete(keys);
-            System.out.println("【缓存清理】已清空非遗项目列表相关的 Redis 缓存，防止脏读");
+        if (stringRedisTemplate == null) {
+            return;
         }
-        stringRedisTemplate.delete(ECHARTS_DATA_KEY);
-        System.out.println("【缓存清理】联动清空首页大屏数据 Redis 缓存");
-        stringRedisTemplate.convertAndSend("project_update_channel", "PROJECT_DATA_CHANGED");
-        System.out.println("【WebSocket广播】已通过 Redis 发送全局数据更新通知");
+        try {
+            Set<String> keys = stringRedisTemplate.keys(PROJECT_PAGE_CACHE_PREFIX + "*");
+            if (keys != null && !keys.isEmpty()) {
+                stringRedisTemplate.delete(keys);
+            }
+            stringRedisTemplate.delete(ECHARTS_DATA_KEY);
+            stringRedisTemplate.convertAndSend("project_update_channel", "PROJECT_DATA_CHANGED");
+        } catch (Exception ignored) {
+            // Ignore cache failures when Redis is unavailable.
+        }
     }
 }

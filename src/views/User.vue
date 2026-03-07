@@ -80,22 +80,19 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
-import axios from 'axios'
 import request from '@/utils/request'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
-// 状态变量
 const tableData = ref([])
 const total = ref(0)
 const pageSize = ref(10)
 const currentPage = ref(1)
 const searchName = ref('')
 const dialogVisible = ref(false)
-const loading = ref(false)     // 表格加载状态
-const btnLoading = ref(false)  // 按钮提交状态
-const currentUser = ref<any>({}) // 当前登录用户
+const loading = ref(false)
+const btnLoading = ref(false)
+const currentUser = ref<any>({})
 
-// 表单数据
 const form = reactive({
     id: undefined,
     username: '',
@@ -105,108 +102,93 @@ const form = reactive({
     status: 1
 })
 
-// 初始化
 onMounted(() => {
-    const str = sessionStorage.getItem('user')
-    if (str) {
-        currentUser.value = JSON.parse(str)
+    const userStr = sessionStorage.getItem('user')
+    if (userStr) {
+        currentUser.value = JSON.parse(userStr)
     }
     fetchData()
 })
 
-// 获取列表数据
 const fetchData = async () => {
-    loading.value = true // 开始加载
+    loading.value = true
     try {
         const res = await request.get('/users/page', {
             params: {
                 pageNum: currentPage.value,
                 pageSize: pageSize.value,
-                username: searchName.value
+                keyword: searchName.value
             }
         })
         if (res.data.code === 200) {
-            tableData.value = res.data.data.records
-            total.value = res.data.data.total
+            tableData.value = res.data.data.records || []
+            total.value = res.data.data.total || 0
         }
     } catch (error) {
         ElMessage.error('数据加载失败')
     } finally {
-        loading.value = false // 结束加载
+        loading.value = false
     }
 }
 
-// 打开新增弹窗
 const openAddDialog = () => {
     Object.assign(form, { id: undefined, username: '', nickname: '', role: 'user', email: '', status: 1 })
     dialogVisible.value = true
 }
 
-// 打开编辑弹窗
 const handleEdit = (row: any) => {
     Object.assign(form, row)
     dialogVisible.value = true
 }
 
-// 保存用户
 const saveUser = async () => {
     if (!form.username) {
         ElMessage.warning('请输入用户名')
         return
     }
 
-    btnLoading.value = true // 按钮转圈
-    const url = form.id ? 'http://localhost:8080/api/users/update' : 'http://localhost:8080/api/users/add'
-    const method = form.id ? 'put' : 'post'
-
+    btnLoading.value = true
     try {
-        const res = await axios[method](url, form)
+        const res = form.id
+            ? await request.put('/users/update', form)
+            : await request.post('/users/add', form)
+
         if (res.data.code === 200) {
             ElMessage.success('保存成功')
             dialogVisible.value = false
             fetchData()
-        } else {
-            ElMessage.error(res.data.msg)
         }
-    } catch (e) {
-        ElMessage.error('操作失败')
+    } catch (error: any) {
+        ElMessage.error(error?.response?.data?.msg || '操作失败')
     } finally {
-        btnLoading.value = false // 按钮恢复
+        btnLoading.value = false
     }
 }
 
-// 删除用户
-// 删除用户
 const handleDelete = (id: number) => {
-    // ✨✨ 新增：自杀防护逻辑
-    // 如果要删除的 ID 等于当前登录者的 ID
     if (id === currentUser.value.id) {
-        ElMessage.error('操作非法：您无法删除当前登录的管理员账号！')
-        return // 直接结束，不弹窗，不发请求
+        ElMessage.error('不能删除当前登录用户')
+        return
     }
 
-    // 原有的删除逻辑
-    ElMessageBox.confirm('确定删除该用户吗？', '警告', { type: 'warning' })
-        .then(async () => {
-            try {
-                await request.delete(`/users/delete/${id}`)
-                ElMessage.success('删除成功')
-                fetchData()
-            } catch (error) {
-                ElMessage.error('删除失败')
-            }
-        })
+    ElMessageBox.confirm('确定删除该用户吗？', '提示', { type: 'warning' }).then(async () => {
+        try {
+            await request.delete(`/users/delete/${id}`)
+            ElMessage.success('删除成功')
+            fetchData()
+        } catch (error) {
+            ElMessage.error('删除失败')
+        }
+    }).catch(() => {})
 }
 
-// 重置密码
 const handleResetPwd = (id: number) => {
-    ElMessageBox.confirm('确定将密码重置为 123456 吗？', '警告', { type: 'warning' }).then(async () => {
+    ElMessageBox.confirm('确定将密码重置为 123456 吗？', '提示', { type: 'warning' }).then(async () => {
         await request.put(`/users/reset-password/${id}`)
-        ElMessage.success('重置成功，新密码：123456')
-    })
+        ElMessage.success('重置成功，新密码为 123456')
+    }).catch(() => {})
 }
 
-// 翻页
 const handlePageChange = (val: number) => {
     currentPage.value = val
     fetchData()

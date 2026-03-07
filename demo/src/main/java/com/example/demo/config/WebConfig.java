@@ -14,14 +14,14 @@ public class WebConfig implements WebMvcConfigurer {
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
-        // 注册 JWT 拦截器
         registry.addInterceptor(jwtInterceptor)
-                .addPathPatterns("/api/**") // 拦截所有 API 请求
+                .addPathPatterns("/api/**")
                 .excludePathPatterns(
-                        "/api/login", // 登录接口不拦截
-                        "/api/auth/**", // 认证相关接口不拦截
-                        "/api/users/add", // 注册用户不拦截
-                        "/api/file/upload" // 文件上传不拦截
+                        "/api/login",
+                        "/api/login/lock-status/**",
+                        "/api/auth/**",
+                        "/api/file/upload",
+                        "/api/file/upload/avatar"
                 );
     }
 }

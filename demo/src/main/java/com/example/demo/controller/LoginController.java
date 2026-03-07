@@ -3,15 +3,21 @@ package com.example.demo.controller;
 import com.example.demo.common.Result;
 import com.example.demo.entity.SysUser;
 import com.example.demo.request.LoginRequest;
+import com.example.demo.service.CaptchaService;
+import com.example.demo.service.IpRateLimitService;
 import com.example.demo.service.LoginAttemptService;
 import com.example.demo.service.SysUserService;
 import com.example.demo.util.JwtUtil;
+import com.example.demo.util.PasswordUtil;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.util.DigestUtils;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
 import java.util.Map;
+
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
 
 @RestController
 @RequestMapping("/api")
@@ -26,29 +32,65 @@ public class LoginController {
     @Autowired
     private JwtUtil jwtUtil;
 
+    @Autowired
+    private IpRateLimitService ipRateLimitService;
+
+    @Autowired
+    private CaptchaService captchaService;
+
+    /**
+     * 获取客户端 IP（兼容代理场景）
+     */
+    private String getClientIp(HttpServletRequest request) {
+        if (request == null) {
+            return "unknown";
+        }
+        String xff = request.getHeader("X-Forwarded-For");
+        if (StringUtils.hasText(xff)) {
+            return xff.split(",")[0].trim();
+        }
+        String realIp = request.getHeader("X-Real-IP");
+        if (StringUtils.hasText(realIp)) {
+            return realIp;
+        }
+        return request.getRemoteAddr();
+    }
+
     @PostMapping("/login")
-    public Result<Map<String, Object>> login(@RequestBody LoginRequest loginForm) {
+    public Result<Map<String, Object>> login(@RequestBody LoginRequest loginForm,
+                                             HttpServletRequest request,
+                                             HttpServletResponse response) {
+        // 0. 基于 IP 的简单限流：同一 IP 60 秒内最多 10 次尝试
+        String clientIp = getClientIp(request);
+        String ipKey = "login:" + clientIp;
+        if (!ipRateLimitService.isAllowed(ipKey, 10, 60)) {
+            long ttl = ipRateLimitService.getRemainingSeconds(ipKey);
+            response.setStatus(429);
+            String msg = ttl > 0
+                    ? String.format("登录过于频繁，请 %d 秒后再试", ttl)
+                    : "登录过于频繁，请稍后再试";
+            return Result.error(msg);
+        }
         String username = loginForm.getUsername();
-        
-        // 1. 检查账户是否被锁定或失败次数过多
+
+        // 1. 校验图形/计算题验证码
+        if (!captchaService.validate(loginForm.getCaptchaId(), loginForm.getCaptchaAnswer(), true)) {
+            return Result.error("验证码错误或已过期");
+        }
+
+        // 2. 检查账户是否被锁定或失败次数过多
         String lockMessage = loginAttemptService.checkLoginAttempts(username);
         if (lockMessage != null) {
             return Result.error(lockMessage);
         }
 
-        // 2. 获取用户输入的明文密码
-        String inputPwd = loginForm.getPassword();
-
-        // 3. 进行 MD5 加密
-        String md5Pwd = DigestUtils.md5DigestAsHex(inputPwd.getBytes());
-
-        // 4. 查询数据库
+        // 3. 查询数据库
         SysUser user = sysUserService.getOne(
             new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<SysUser>()
                 .eq(SysUser::getUsername, username)
         );
 
-        // 5. 验证用户和密码
+        // 4. 验证用户和密码（兼容旧版 MD5 + 新版 BCrypt）
         if (user == null) {
             // 用户名不存在，增加失败次数
             loginAttemptService.incrementLoginAttempts(username);
@@ -56,7 +98,8 @@ public class LoginController {
             return Result.error(String.format("用户名不存在，剩余尝试次数：%d", remaining));
         }
 
-        if (!user.getPasswordHash().equals(md5Pwd)) {
+        String inputPwd = loginForm.getPassword();
+        if (!PasswordUtil.matches(inputPwd, user.getPasswordHash())) {
             // 密码错误，增加失败次数
             loginAttemptService.incrementLoginAttempts(username);
             int remaining = loginAttemptService.getRemainingAttempts(username);
@@ -68,10 +111,16 @@ public class LoginController {
             }
         }
 
-        // 6. 登录成功，重置失败次数
+        // 5. 登录成功，重置失败次数
         loginAttemptService.resetLoginAttempts(username);
         
-        // 7. 生成 JWT Token
+        // 如仍为旧版 MD5，则自动迁移为 BCrypt
+        if (PasswordUtil.isLegacyMd5(user.getPasswordHash())) {
+            user.setPasswordHash(PasswordUtil.encode(inputPwd));
+            sysUserService.updateById(user);
+        }
+        
+        // 6. 生成 JWT Token
         Map<String, Object> claims = new HashMap<>();
         claims.put("userId", user.getId());
         claims.put("username", user.getUsername());

@@ -37,11 +37,20 @@ public class SearchHistoryController {
             return Result.error("参数不完整");
         }
         String key = SEARCH_HISTORY_PREFIX + userIdObj;
-        // LPUSH 将新关键词压入列表头部（最新的在前）
-        stringRedisTemplate.opsForList().leftPush(key, keyword.trim());
-        // LTRIM 只保留最近 MAX_HISTORY_SIZE 条，自动淘汰旧记录
-        stringRedisTemplate.opsForList().trim(key, 0, MAX_HISTORY_SIZE - 1);
-        return Result.success(true);
+        if (stringRedisTemplate == null) {
+            // 未配置 Redis 时直接返回成功，不影响主流程
+            return Result.success(true);
+        }
+        try {
+            // LPUSH 将新关键词压入列表头部（最新的在前）
+            stringRedisTemplate.opsForList().leftPush(key, keyword.trim());
+            // LTRIM 只保留最近 MAX_HISTORY_SIZE 条，自动淘汰旧记录
+            stringRedisTemplate.opsForList().trim(key, 0, MAX_HISTORY_SIZE - 1);
+            return Result.success(true);
+        } catch (Exception ignored) {
+            // Redis 不可用时忽略错误
+            return Result.success(true);
+        }
     }
 
     /**
@@ -51,8 +60,15 @@ public class SearchHistoryController {
     @GetMapping("/history")
     public Result<List<String>> history(@RequestParam Long userId) {
         String key = SEARCH_HISTORY_PREFIX + userId;
-        List<String> list = stringRedisTemplate.opsForList().range(key, 0, MAX_HISTORY_SIZE - 1);
-        return Result.success(list);
+        if (stringRedisTemplate == null) {
+            return Result.success(java.util.Collections.emptyList());
+        }
+        try {
+            List<String> list = stringRedisTemplate.opsForList().range(key, 0, MAX_HISTORY_SIZE - 1);
+            return Result.success(list);
+        } catch (Exception ignored) {
+            return Result.success(java.util.Collections.emptyList());
+        }
     }
 
     /**
@@ -62,7 +78,14 @@ public class SearchHistoryController {
     @DeleteMapping("/history")
     public Result<Boolean> clearHistory(@RequestParam Long userId) {
         String key = SEARCH_HISTORY_PREFIX + userId;
-        stringRedisTemplate.delete(key);
-        return Result.success(true);
+        if (stringRedisTemplate == null) {
+            return Result.success(true);
+        }
+        try {
+            stringRedisTemplate.delete(key);
+            return Result.success(true);
+        } catch (Exception ignored) {
+            return Result.success(true);
+        }
     }
 }

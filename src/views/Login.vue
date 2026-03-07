@@ -59,6 +59,18 @@
                                 </div>
                             </el-form-item>
 
+                            <!-- 计算题验证码（登录和注册共用） -->
+                            <el-form-item prop="captchaAnswer">
+                                <div style="display: flex; width: 100%; gap: 10px; align-items: center;">
+                                    <el-input v-model="form.captchaAnswer"
+                                        :placeholder="captchaQuestion ? `请计算：${captchaQuestion}` : '正在获取验证码...'"
+                                        size="large" style="flex: 1;" />
+                                    <el-button text type="primary" @click="loadCaptcha" style="width: 90px;">
+                                        换一题
+                                    </el-button>
+                                </div>
+                            </el-form-item>
+
                             <div class="options-row" v-if="isLogin">
                                 <el-checkbox v-model="remember">记住我</el-checkbox>
                                 <el-link type="primary" :underline="false" @click="openForgotDialog">忘记密码？</el-link>
@@ -130,81 +142,108 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
-import { User, Lock, Edit, Key, Iphone, Message } from '@element-plus/icons-vue'
+import { ref, reactive, onMounted } from 'vue'
+import { User, Lock, Edit, Key, Message } from '@element-plus/icons-vue'
 import axios from 'axios'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { useRouter } from 'vue-router'
+import { buildApiUrl } from '@/utils/url'
 
 const router = useRouter()
 const loading = ref(false)
 const remember = ref(false)
 const formRef = ref<FormInstance>()
 const isLogin = ref(true)
-
-// =============== 定时器与发送验证码逻辑 ===============
 const regCountdown = ref(0)
 const forgotCountdown = ref(0)
+const forgotDialogVisible = ref(false)
+const resetLoading = ref(false)
+const forgotFormRef = ref<FormInstance>()
 
-const sendEmailApi = async (email: string) => {
-    try {
-        const res = await axios.post('http://localhost:8080/api/auth/send-code', { email })
-        if (res.data.code === 200) {
-            ElMessage.success('验证码已发送至邮箱，5分钟内有效')
-            return true
-        } else {
-            ElMessage.error(res.data.msg || '发送失败')
-            return false
-        }
-    } catch (err) {
-        ElMessage.error('请求失败，请检查后端是否正常启动')
-        return false
-    }
-}
+const emailPattern = /^[\w-]+(\.[\w-]+)*@[\w-]+(\.[\w-]+)+$/
 
-const sendRegCode = async () => {
-    if (!form.email || !/^[\w-]+(\.[\w-]+)*@[\w-]+(\.[\w-]+)+$/.test(form.email)) {
-        return ElMessage.warning('请先输入正确的邮箱格式')
-    }
-    const success = await sendEmailApi(form.email)
-    if (success) {
-        regCountdown.value = 60
-        const timer = setInterval(() => {
-            regCountdown.value--
-            if (regCountdown.value <= 0) clearInterval(timer)
-        }, 1000)
-    }
-}
-
-const sendForgotCode = async () => {
-    if (!forgotForm.email || !/^[\w-]+(\.[\w-]+)*@[\w-]+(\.[\w-]+)+$/.test(forgotForm.email)) {
-        return ElMessage.warning('请先输入正确的邮箱格式')
-    }
-    const success = await sendEmailApi(forgotForm.email)
-    if (success) {
-        forgotCountdown.value = 60
-        const timer = setInterval(() => {
-            forgotCountdown.value--
-            if (forgotCountdown.value <= 0) clearInterval(timer)
-        }, 1000)
-    }
-}
-
-// =============== 登录与注册模块 ===============
 const form = reactive({
     username: '',
     passwordHash: '',
     confirmPassword: '',
     nickname: '',
     email: '',
-    code: ''
+    code: '',
+    captchaId: '',
+    captchaAnswer: ''
 })
 
-const validateConfirmPassword = (rule: any, value: any, callback: any) => {
-    if (isLogin.value) return callback()
-    if (value === '') callback(new Error('请再次输入密码'))
-    else if (value !== form.passwordHash) callback(new Error('两次输入的密码不一致!'))
-    else callback()
+const captchaQuestion = ref('')
+
+const forgotForm = reactive({
+    username: '',
+    email: '',
+    code: '',
+    newPassword: '',
+    confirmPassword: ''
+})
+
+const startCountdown = (target: typeof regCountdown | typeof forgotCountdown) => {
+    target.value = 60
+    const timer = window.setInterval(() => {
+        target.value -= 1
+        if (target.value <= 0) {
+            window.clearInterval(timer)
+        }
+    }, 1000)
+}
+
+const sendEmailApi = async (email: string) => {
+    try {
+        const res = await axios.post(buildApiUrl('/auth/send-code'), { email })
+        if (res.data.code === 200) {
+            ElMessage.success('验证码已发送，请查收邮箱')
+            return true
+        }
+        ElMessage.error(res.data.msg || '验证码发送失败')
+        return false
+    } catch (error: any) {
+        ElMessage.error(error?.response?.data?.msg || '请求失败，请检查后端服务')
+        return false
+    }
+}
+
+const sendRegCode = async () => {
+    if (!emailPattern.test(form.email)) {
+        ElMessage.warning('请输入正确的邮箱地址')
+        return
+    }
+    const success = await sendEmailApi(form.email.trim())
+    if (success) {
+        startCountdown(regCountdown)
+    }
+}
+
+const sendForgotCode = async () => {
+    if (!emailPattern.test(forgotForm.email)) {
+        ElMessage.warning('请输入正确的邮箱地址')
+        return
+    }
+    const success = await sendEmailApi(forgotForm.email.trim())
+    if (success) {
+        startCountdown(forgotCountdown)
+    }
+}
+
+const validateConfirmPassword = (_rule: any, value: string, callback: (error?: Error) => void) => {
+    if (isLogin.value) {
+        callback()
+        return
+    }
+    if (!value) {
+        callback(new Error('请再次输入密码'))
+        return
+    }
+    if (value !== form.passwordHash) {
+        callback(new Error('两次输入的密码不一致'))
+        return
+    }
+    callback()
 }
 
 const rules = reactive<FormRules>({
@@ -216,98 +255,11 @@ const rules = reactive<FormRules>({
     confirmPassword: [{ validator: validateConfirmPassword, trigger: 'blur' }],
     nickname: [{ required: true, message: '请输入昵称', trigger: 'blur' }],
     email: [
-        { required: true, message: '注册必须填写邮箱', trigger: 'blur' },
+        { required: true, message: '请输入邮箱', trigger: 'blur' },
         { type: 'email', message: '邮箱格式错误', trigger: ['blur', 'change'] }
     ],
-    code: [{ required: true, message: '请输入验证码', trigger: 'blur' }]
-})
-
-const toggleMode = () => {
-    isLogin.value = !isLogin.value
-    form.username = ''; form.passwordHash = ''; form.confirmPassword = '';
-    form.nickname = ''; form.email = ''; form.code = '';
-    setTimeout(() => formRef.value?.clearValidate(), 0)
-}
-
-const handleSubmit = async () => {
-    await formRef.value?.validate(async (valid) => {
-        if (!valid) return
-        loading.value = true
-        try {
-            // 注册请求将 code 挂在 URL 上作为 RequestParam
-            const url = isLogin.value
-                ? 'http://localhost:8080/api/login'
-                : `http://localhost:8080/api/auth/register?code=${form.code}`
-
-            const payload = {
-                username: form.username,
-                password: form.passwordHash,  // 登录时使用 password 字段
-                nickname: form.nickname,
-                email: form.email
-            }
-
-            const res = await axios.post(url, payload)
-
-            if (res.data.code === 200) {
-                ElMessage.success(isLogin.value ? '登录成功' : '注册成功并自动登录')
-                
-                if (isLogin.value) {
-                    // 登录成功，存储用户信息和 Token
-                    const loginData = res.data.data
-                    // 将Token添加到用户对象中，便于request模块使用
-                    const userWithToken = {
-                        ...loginData.user,
-                        token: loginData.token
-                    }
-                    sessionStorage.setItem('user', JSON.stringify(userWithToken))
-                    sessionStorage.setItem('token', loginData.token)
-                    sessionStorage.setItem('tokenExpires', loginData.expiresIn)
-                } else {
-                    // 注册成功，存储用户信息
-                    sessionStorage.setItem('user', JSON.stringify(res.data.data))
-                }
-                
-                router.push('/home')
-            } else {
-                ElMessage.error(res.data.msg || '操作失败')
-            }
-        } catch (error: any) {
-            // 显示详细的错误信息
-            if (error.response) {
-                const status = error.response.status
-                const message = error.response.data?.msg || error.response.data?.message || '操作失败'
-                
-                if (status === 401) {
-                    ElMessage.error(message || '用户名或密码错误')
-                } else if (status === 403) {
-                    ElMessage.error('账户已被锁定，请稍后再试或联系管理员')
-                } else if (status === 429) {
-                    ElMessage.error('操作过于频繁，请稍后再试')
-                } else {
-                    ElMessage.error(message)
-                }
-            } else if (error.message === 'Network Error') {
-                ElMessage.error('网络连接失败，请检查网络后重试')
-            } else {
-                ElMessage.error('服务器响应超时，请稍后重试')
-            }
-        } finally {
-            loading.value = false
-        }
-    })
-}
-
-// =============== 忘记密码模块 ===============
-const forgotDialogVisible = ref(false)
-const resetLoading = ref(false)
-const forgotFormRef = ref<FormInstance>()
-
-const forgotForm = reactive({
-    username: '',
-    email: '',
-    code: '',
-    newPassword: '',
-    confirmPassword: ''
+    code: [{ required: true, message: '请输入验证码', trigger: 'blur' }],
+    captchaAnswer: [{ required: true, message: '请输入计算结果', trigger: 'blur' }]
 })
 
 const forgotRules = reactive<FormRules>({
@@ -321,13 +273,136 @@ const forgotRules = reactive<FormRules>({
     confirmPassword: [
         { required: true, message: '请确认新密码', trigger: 'blur' },
         {
-            validator: (rule: any, value: any, callback: any) => {
-                if (value !== forgotForm.newPassword) callback(new Error('两次输入密码不一致!'))
-                else callback()
-            }, trigger: 'blur'
+            validator: (_rule: any, value: string, callback: (error?: Error) => void) => {
+                if (value !== forgotForm.newPassword) {
+                    callback(new Error('两次输入的密码不一致'))
+                    return
+                }
+                callback()
+            },
+            trigger: 'blur'
         }
     ]
 })
+
+const resetRegisterForm = () => {
+    form.username = ''
+    form.passwordHash = ''
+    form.confirmPassword = ''
+    form.nickname = ''
+    form.email = ''
+    form.code = ''
+    form.captchaAnswer = ''
+}
+
+const toggleMode = () => {
+    isLogin.value = !isLogin.value
+    resetRegisterForm()
+    window.setTimeout(() => formRef.value?.clearValidate(), 0)
+}
+
+const loadCaptcha = async () => {
+    try {
+        const res = await axios.get(buildApiUrl('/auth/captcha'))
+        if (res.data.code === 200 && res.data.data) {
+            captchaQuestion.value = res.data.data.question
+            form.captchaId = res.data.data.captchaId
+            form.captchaAnswer = ''
+        }
+    } catch (error: any) {
+        console.error('加载验证码失败', error)
+    }
+}
+
+onMounted(() => {
+    loadCaptcha()
+})
+
+const handleSubmit = async () => {
+    const valid = await formRef.value?.validate().then(() => true).catch(() => false)
+    if (!valid) {
+        return
+    }
+
+    loading.value = true
+    try {
+        if (isLogin.value) {
+            const res = await axios.post(buildApiUrl('/login'), {
+                username: form.username.trim(),
+                password: form.passwordHash,
+                captchaId: form.captchaId,
+                captchaAnswer: form.captchaAnswer
+            })
+
+            if (res.data.code !== 200) {
+                ElMessage.error(res.data.msg || '登录失败')
+                return
+            }
+
+            const loginData = res.data.data
+            const userWithToken = {
+                ...loginData.user,
+                token: loginData.token
+            }
+            sessionStorage.setItem('user', JSON.stringify(userWithToken))
+            sessionStorage.setItem('token', loginData.token)
+            sessionStorage.setItem('tokenExpires', String(loginData.expiresIn || ''))
+            ElMessage.success('登录成功')
+            router.push('/home')
+            return
+        }
+
+        const registerUrl = `${buildApiUrl('/auth/register')}?code=${encodeURIComponent(
+            form.code.trim()
+        )}&captchaId=${encodeURIComponent(form.captchaId || '')}&captchaAnswer=${encodeURIComponent(
+            form.captchaAnswer || ''
+        )}`
+
+        const registerRes = await axios.post(registerUrl, {
+            username: form.username.trim(),
+            passwordHash: form.passwordHash,
+            nickname: form.nickname.trim(),
+            email: form.email.trim()
+        })
+
+        if (registerRes.data.code !== 200) {
+            ElMessage.error(registerRes.data.msg || '注册失败')
+            // 注册失败时刷新验证码，防止被重放
+            loadCaptcha()
+            return
+        }
+
+        ElMessage.success('注册成功，请使用新账号登录')
+        isLogin.value = true
+        form.passwordHash = ''
+        form.confirmPassword = ''
+        form.code = ''
+        form.nickname = ''
+        window.setTimeout(() => formRef.value?.clearValidate(), 0)
+    } catch (error: any) {
+        if (error.response) {
+            const status = error.response.status
+            const message = error.response.data?.msg || error.response.data?.message || '操作失败'
+            if (status === 401) {
+                ElMessage.error(message || '用户名或密码错误')
+            } else if (status === 403) {
+                ElMessage.error(message || '账号已被锁定')
+            } else if (status === 429) {
+                ElMessage.error(message || '请求过于频繁，请稍后再试')
+            } else {
+                ElMessage.error(message)
+            }
+            // 任何异常时都重刷验证码，避免被反复尝试
+            loadCaptcha()
+        } else if (error.message === 'Network Error') {
+            ElMessage.error('网络连接失败，请稍后重试')
+        } else {
+            ElMessage.error('服务响应超时，请稍后重试')
+        }
+    } finally {
+        loading.value = false
+    }
+}
 
 const openForgotDialog = () => {
     forgotDialogVisible.value = true
@@ -336,36 +411,39 @@ const openForgotDialog = () => {
     forgotForm.code = ''
     forgotForm.newPassword = ''
     forgotForm.confirmPassword = ''
-    setTimeout(() => forgotFormRef.value?.clearValidate(), 0)
+    window.setTimeout(() => forgotFormRef.value?.clearValidate(), 0)
 }
 
 const handleResetPassword = async () => {
-    await forgotFormRef.value?.validate(async (valid) => {
-        if (!valid) return
-        resetLoading.value = true
-        try {
-            const payload = {
-                username: forgotForm.username,
-                email: forgotForm.email,
-                code: forgotForm.code,
-                newPassword: forgotForm.newPassword
-            }
-            const res = await axios.post('http://localhost:8080/api/auth/reset-password', payload)
+    const valid = await forgotFormRef.value?.validate().then(() => true).catch(() => false)
+    if (!valid) {
+        return
+    }
 
-            if (res.data.code === 200) {
-                ElMessage.success('密码重置成功，请重新登录')
-                forgotDialogVisible.value = false
-                form.username = forgotForm.username
-                form.passwordHash = ''
-            } else {
-                ElMessage.error(res.data.msg || '验证失败')
-            }
-        } catch (error) {
-            ElMessage.error('服务连接失败')
-        } finally {
-            resetLoading.value = false
+    resetLoading.value = true
+    try {
+        const payload = {
+            username: forgotForm.username.trim(),
+            email: forgotForm.email.trim(),
+            code: forgotForm.code.trim(),
+            newPassword: forgotForm.newPassword
         }
-    })
+        const res = await axios.post(buildApiUrl('/auth/reset-password'), payload)
+
+        if (res.data.code === 200) {
+            ElMessage.success('密码重置成功，请重新登录')
+            forgotDialogVisible.value = false
+            form.username = forgotForm.username.trim()
+            form.passwordHash = ''
+            return
+        }
+
+        ElMessage.error(res.data.msg || '密码重置失败')
+    } catch (error: any) {
+        ElMessage.error(error?.response?.data?.msg || '服务连接失败')
+    } finally {
+        resetLoading.value = false
+    }
 }
 </script>
 

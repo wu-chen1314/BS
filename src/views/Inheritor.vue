@@ -29,7 +29,7 @@
             <el-table-column label="头像" width="100" align="center">
                 <template #default="scope">
                     <el-avatar shape="square" :size="50"
-                        :src="scope.row.avatarUrl || 'https://cube.elemecdn.com/9/c2/f0ee8a3c7c9638a54940382568c9dpng.png'" />
+                        :src="getAvatarUrl(scope.row.avatarUrl) || 'https://cube.elemecdn.com/9/c2/f0ee8a3c7c9638a54940382568c9dpng.png'" />
                 </template>
             </el-table-column>
 
@@ -74,9 +74,9 @@
             <el-form :model="form" label-width="100px" style="padding-right: 20px;">
 
                 <el-form-item label="大师照片" prop="avatarUrl">
-                    <el-upload class="avatar-uploader" action="http://localhost:8080/api/file/upload"
+                    <el-upload class="avatar-uploader" :action="fileUploadAction" :headers="uploadHeaders"
                         :show-file-list="false" :on-success="handleAvatarSuccess" :before-upload="beforeAvatarUpload">
-                        <img v-if="form.avatarUrl" :src="form.avatarUrl" class="avatar" />
+                        <img v-if="form.avatarUrl" :src="getAvatarUrl(form.avatarUrl)" class="avatar" />
                         <el-icon v-else class="avatar-uploader-icon">
                             <Plus />
                         </el-icon>
@@ -198,8 +198,8 @@ import { useRoute } from 'vue-router'
 import { Search, Plus, Edit, Delete, Star, Loading } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { UploadProps } from 'element-plus'
-import axios from 'axios'
 import request from '@/utils/request'
+import { buildApiUrl, buildStaticUrl, getAuthHeaders } from '@/utils/url'
 
 // 路由参数
 const route = useRoute()
@@ -234,16 +234,10 @@ const previewForm = reactive({
 const previewData = ref<any[]>([])
 
 // 表单数据
-const form = reactive({
-    id: undefined,
-    name: '',
-    sex: '男', // 默认选中男
-    age: 50,
-    avatarUrl: '', // 头像链接
-    level: '',
-    description: '',
-    projectId: undefined
-})
+
+const fileUploadAction = buildApiUrl('/file/upload')
+const uploadHeaders = getAuthHeaders()
+const getAvatarUrl = (avatarUrl?: string) => buildStaticUrl(avatarUrl)
 
 // --- 初始化 ---
 onMounted(async () => {
@@ -306,11 +300,11 @@ const fetchProjects = async () => {
     try {
         // ⚠️ 注意：如果你没有写 /api/projects/list 接口，就用分页接口！
         // pageSize=1000 是为了把所有项目都拉下来，防止漏掉
-        const res = await request.get('/projects/page?pageNum=1&pageSize=1000')
+        const res = await request.get('/projects/list')
 
         if (res.data.code === 200 && res.data.data) {
             // ⚠️ 注意：分页接口返回的数据通常在 records 里
-            projectList.value = res.data.data.records || []
+            projectList.value = res.data.data || []
         } else {
             projectList.value = []
             ElMessage.error(res.data.msg || '加载项目列表失败')
@@ -382,13 +376,9 @@ const saveInheritor = async () => {
     console.log('保存传承人数据:', submitData)
 
     try {
-        const url = form.id
-            ? 'http://localhost:8080/api/inheritors/update'
-            : 'http://localhost:8080/api/inheritors/add'
-
-        const method = form.id ? 'put' : 'post'
-
-        const res = await axios[method](url, submitData)
+        const res = form.id
+            ? await request.put('/inheritors/update', submitData)
+            : await request.post('/inheritors/add', submitData)
 
         if (res.data.code === 200) {
             console.log('传承人保存成功:', res.data)

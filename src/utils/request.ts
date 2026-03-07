@@ -1,9 +1,10 @@
-import axios, { AxiosError, InternalAxiosRequestConfig, AxiosResponse } from 'axios'
-import { ElMessage } from 'element-plus'
+import axios, { AxiosError, AxiosResponse, InternalAxiosRequestConfig } from 'axios'
 import errorHandler from './errorHandler'
+import { requestCache, generateCacheKey } from './cache'
+import { apiBaseUrl } from './url'
 
 const service = axios.create({
-    baseURL: 'http://localhost:8080/api',
+    baseURL: apiBaseUrl,
     timeout: 10000,
     headers: {
         'Content-Type': 'application/json;charset=UTF-8'
@@ -17,10 +18,16 @@ service.interceptors.request.use(
             const user = JSON.parse(userStr)
             config.headers['Authorization'] = `Bearer ${user.token || ''}`
         }
+
+        if (config.method === 'get' && config.url?.includes('/region-category/')) {
+            const cacheKey = generateCacheKey(config.url || '', config.params)
+            config.headers['X-Cache-Key'] = cacheKey
+        }
+
         return config
     },
     (error: AxiosError) => {
-        console.error('请求错误:', error)
+        console.error('Request error:', error)
         return Promise.reject(error)
     }
 )
@@ -30,14 +37,29 @@ service.interceptors.response.use(
         const res = response.data
 
         if (res.code === 200) {
+            const config = response.config
+            if (config.method === 'get' && config.headers['X-Cache-Key']) {
+                const cacheKey = config.headers['X-Cache-Key'] as string
+                requestCache.set(cacheKey, res)
+            }
             return response
-        } else {
-            errorHandler.showSimpleError(res.msg || '操作失败')
-            return Promise.reject(new Error(res.msg || '操作失败'))
         }
+
+        errorHandler.showSimpleError(res.msg || 'Operation failed')
+        return Promise.reject(new Error(res.msg || 'Operation failed'))
     },
     (error: AxiosError) => {
-        errorHandler.handleError(error, '请求')
+        const config = error.config as InternalAxiosRequestConfig & { headers: Record<string, string> }
+        if (config && config.method === 'get' && config.headers['X-Cache-Key']) {
+            const cacheKey = config.headers['X-Cache-Key']
+            const cachedData = requestCache.get(cacheKey)
+
+            if (cachedData) {
+                return Promise.resolve({ data: cachedData } as AxiosResponse)
+            }
+        }
+
+        errorHandler.handleError(error, 'Request')
         return Promise.reject(error)
     }
 )
