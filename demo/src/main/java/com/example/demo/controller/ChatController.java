@@ -1,18 +1,13 @@
 package com.example.demo.controller;
 
-import cn.hutool.http.HttpRequest;
-import cn.hutool.http.HttpResponse;
-import cn.hutool.json.JSONArray;
-import cn.hutool.json.JSONObject;
-import cn.hutool.json.JSONUtil;
 import com.example.demo.common.Result;
 import com.example.demo.entity.AiChatHistory;
 import com.example.demo.entity.ChatSession;
 import com.example.demo.service.AiChatHistoryService;
 import com.example.demo.service.ChatSessionService;
+import com.example.demo.service.DeepSeekChatService;
 import com.example.demo.util.RequestAuthUtil;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
 
 import javax.servlet.http.HttpServletRequest;
@@ -26,8 +21,6 @@ import java.util.Map;
 @RequestMapping("/api/chat")
 public class ChatController {
 
-    private static final String API_URL = "https://api.deepseek.com/chat/completions";
-
     @Autowired
     private AiChatHistoryService aiChatHistoryService;
 
@@ -37,8 +30,8 @@ public class ChatController {
     @Autowired
     private RequestAuthUtil requestAuthUtil;
 
-    @Value("${deepseek.api.key}")
-    private String apiKey;
+    @Autowired
+    private DeepSeekChatService deepSeekChatService;
 
     @PostMapping("/send")
     public Result<Map<String, Object>> send(@RequestBody Map<String, Object> params, HttpServletRequest request) {
@@ -54,18 +47,26 @@ public class ChatController {
 
         Long chatId = toLong(params.get("chatId"));
         String title = params.get("title") == null ? null : params.get("title").toString();
-        ChatSession session;
+        ChatSession session = null;
         if (chatId != null) {
             session = chatSessionService.getById(chatId);
             if (session == null || !currentUserId.equals(session.getUserId())) {
                 return Result.error("会话不存在或无权访问");
             }
-        } else {
+        }
+
+        final String aiReply;
+        try {
+            aiReply = deepSeekChatService.generateReply(message);
+        } catch (IllegalStateException exception) {
+            return Result.error(exception.getMessage());
+        }
+
+        if (chatId == null) {
             session = chatSessionService.createSession(currentUserId, title);
             chatId = session.getId();
         }
 
-        String aiReply = callDeepSeekApi(message);
         aiChatHistoryService.saveRecord(currentUserId, chatId, message, aiReply);
         chatSessionService.updateLastMessage(chatId, message + " | " + aiReply);
 
@@ -156,41 +157,6 @@ public class ChatController {
         }
 
         return Result.success(messages);
-    }
-
-    private String callDeepSeekApi(String userMessage) {
-        try {
-            JSONObject body = new JSONObject();
-            body.set("model", "deepseek-chat");
-            body.set("temperature", 0.7);
-
-            JSONArray messages = new JSONArray();
-            messages.add(new JSONObject()
-                    .set("role", "system")
-                    .set("content", "你是一个专业的非物质文化遗产科普助手，请用生动有趣的语言回答用户关于非遗的问题。"));
-            messages.add(new JSONObject().set("role", "user").set("content", userMessage));
-            body.set("messages", messages);
-
-            HttpResponse response = HttpRequest.post(API_URL)
-                    .header("Authorization", "Bearer " + apiKey)
-                    .header("Content-Type", "application/json")
-                    .body(body.toString())
-                    .timeout(20000)
-                    .execute();
-
-            if (response.getStatus() != 200) {
-                return "AI response error: " + response.getStatus();
-            }
-
-            JSONObject json = JSONUtil.parseObj(response.body());
-            return json.getJSONArray("choices")
-                    .getJSONObject(0)
-                    .getJSONObject("message")
-                    .getStr("content");
-        } catch (Exception exception) {
-            exception.printStackTrace();
-            return "抱歉，AI 开小差了，请稍后再试。(网络请求失败)";
-        }
     }
 
     private Long toLong(Object value) {

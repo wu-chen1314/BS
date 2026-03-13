@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">ICH AI assistant placeholder</title>
+  <desc id="desc">Local fallback avatar for the AI assistant.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0%" x2="100%" y1="0%" y2="100%">
+      <stop offset="0%" stop-color="#243546" />
+      <stop offset="100%" stop-color="#40617b" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="128" fill="url(#bg)" />
+  <rect x="124" y="126" width="264" height="208" rx="56" fill="#f7ead7" fill-opacity="0.96" />
+  <path d="M208 334 L168 398 L246 360" fill="#f7ead7" fill-opacity="0.96" />
+  <circle cx="208" cy="228" r="22" fill="#8f5a3c" />
+  <circle cx="304" cy="228" r="22" fill="#8f5a3c" />
+  <path d="M196 286 C222 310 290 310 316 286" fill="none" stroke="#8f5a3c" stroke-linecap="round" stroke-width="16" />
+  <text x="256" y="450" text-anchor="middle" font-family="Arial, sans-serif" font-size="44" fill="#f7ead7" letter-spacing="10">AI</text>
+</svg>

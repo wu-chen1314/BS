@@ -16,7 +16,6 @@ import com.example.demo.entity.IchRegion;
 import com.example.demo.mapper.AppCommentMapper;
 import com.example.demo.mapper.AppFavoriteMapper;
 import com.example.demo.mapper.IchCategoryMapper;
-import com.example.demo.mapper.IchInheritorMapper;
 import com.example.demo.mapper.IchProjectMapper;
 import com.example.demo.mapper.IchProjectViewMapper;
 import com.example.demo.mapper.IchRegionMapper;
@@ -35,9 +34,6 @@ import java.util.stream.Collectors;
 
 @Service
 public class IchProjectServiceImpl extends ServiceImpl<IchProjectMapper, IchProject> implements IchProjectService {
-
-        @Autowired
-        private IchInheritorMapper inheritorMapper;
 
         @Autowired
         private IchInheritorService inheritorService;
@@ -98,10 +94,10 @@ public class IchProjectServiceImpl extends ServiceImpl<IchProjectMapper, IchProj
                         .map(IchProject::getRegionId)
                         .filter(Objects::nonNull)
                         .collect(Collectors.toSet());
-                Map<Long, String> regionNameMap = regionIds.isEmpty()
+                Map<Long, IchRegion> regionMap = regionIds.isEmpty()
                         ? Collections.emptyMap()
                         : regionMapper.selectBatchIds(regionIds).stream()
-                                .collect(Collectors.toMap(IchRegion::getId, IchRegion::getName));
+                                .collect(Collectors.toMap(IchRegion::getId, item -> item));
 
                 Map<Long, Long> viewCountMap = projectViewMapper.selectList(
                                 new LambdaQueryWrapper<IchProjectView>().in(IchProjectView::getProjectId, projectIds))
@@ -120,7 +116,12 @@ public class IchProjectServiceImpl extends ServiceImpl<IchProjectMapper, IchProj
                                 .filter(Objects::nonNull)
                                 .collect(Collectors.toList()));
                         project.setCategoryName(categoryNameMap.get(project.getCategoryId()));
-                        project.setRegionName(regionNameMap.get(project.getRegionId()));
+                        IchRegion region = regionMap.get(project.getRegionId());
+                        project.setRegionName(region == null ? null : region.getName());
+                        if ((project.getLongitude() == null || project.getLatitude() == null) && region != null) {
+                                project.setLongitude(region.getLongitude());
+                                project.setLatitude(region.getLatitude());
+                        }
                         if (project.getViewCount() == null) {
                                 project.setViewCount(viewCountMap.getOrDefault(project.getId(), 0L));
                         }
@@ -142,7 +143,10 @@ public class IchProjectServiceImpl extends ServiceImpl<IchProjectMapper, IchProj
         public boolean deleteProjectsWithRelations(List<Long> ids) {
                 if (ids == null || ids.isEmpty())
                         return false;
-                inheritorMapper.delete(new LambdaQueryWrapper<IchInheritor>().in(IchInheritor::getProjectId, ids));
+                UpdateWrapper<IchInheritor> reset = new UpdateWrapper<>();
+                reset.in("project_id", ids).set("project_id", null);
+                inheritorService.update(reset);
+                projectViewMapper.delete(new LambdaQueryWrapper<IchProjectView>().in(IchProjectView::getProjectId, ids));
                 commentMapper.delete(new LambdaQueryWrapper<AppComment>().in(AppComment::getProjectId, ids));
                 favoriteMapper.delete(new LambdaQueryWrapper<AppFavorite>().in(AppFavorite::getProjectId, ids));
                 return this.removeByIds(ids);

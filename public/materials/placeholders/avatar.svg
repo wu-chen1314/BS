@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">ICH avatar placeholder</title>
+  <desc id="desc">Local fallback avatar for users, inheritors, and comments.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0%" x2="100%" y1="0%" y2="100%">
+      <stop offset="0%" stop-color="#f7ead7" />
+      <stop offset="100%" stop-color="#d8b27f" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="128" fill="url(#bg)" />
+  <circle cx="256" cy="192" r="88" fill="#fff9f0" fill-opacity="0.92" />
+  <path d="M120 418 C120 334 180 286 256 286 C332 286 392 334 392 418" fill="#fff9f0" fill-opacity="0.92" />
+  <circle cx="256" cy="192" r="72" fill="#7d4a33" fill-opacity="0.16" />
+  <path d="M156 416 C170 344 208 314 256 314 C304 314 342 344 356 416" fill="#7d4a33" fill-opacity="0.12" />
+  <text x="256" y="468" text-anchor="middle" font-family="Arial, sans-serif" font-size="40" fill="#6a3d2a" letter-spacing="6">ICH</text>
+</svg>

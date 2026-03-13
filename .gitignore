@@ -22,3 +22,10 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Local build and tool caches
+.home/
+.m2/
+.npm-cache/
+.tmp/
+.tools/

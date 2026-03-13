@@ -1,3 +1,5 @@
+import { getCurrentUser, getStoredToken } from "./session"
+
 const trimTrailingSlash = (value: string) => value.replace(/\/+$/, '')
 
 const hasWindow = typeof window !== 'undefined'
@@ -73,16 +75,6 @@ export const getAuthHeaders = () => {
         return {}
     }
 
-    const userStr = window.sessionStorage.getItem('user')
-    if (!userStr) {
-        return {}
-    }
-
-    try {
-        const user = JSON.parse(userStr)
-        return user?.token ? { Authorization: `Bearer ${user.token}` } : {}
-    } catch (error) {
-        console.error('Failed to parse user session', error)
-        return {}
-    }
+    const token = getCurrentUser()?.token || getStoredToken()
+    return token ? { Authorization: `Bearer ${token}` } : {}
 }

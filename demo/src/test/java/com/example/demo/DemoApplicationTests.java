@@ -13,6 +13,8 @@ import org.springframework.web.socket.server.standard.ServerEndpointExporter;
                 "spring.datasource.username=sa",
                 "spring.datasource.password=",
                 "spring.redis.enabled=false",
+                "deepseek.api.key=test-key",
+                "jwt.secret=ichPromotionSystemSecretKey202603021530NonHeritage",
                 "spring.mail.username=test@example.com",
                 "spring.mail.password=test-auth-code"
         })

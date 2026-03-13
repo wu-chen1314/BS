@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @TableName("ich_region")
@@ -23,6 +24,10 @@ public class IchRegion {
     private String regionCode;
 
     private Integer level;
+
+    private BigDecimal longitude;
+
+    private BigDecimal latitude;
 
     private LocalDateTime createdAt;
 }

@@ -1,72 +1,169 @@
 package com.example.demo.controller;
 
 import com.example.demo.common.Result;
-import org.springframework.web.bind.annotation.*;
+import com.example.demo.util.RequestAuthUtil;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.util.StringUtils;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
+import javax.servlet.http.HttpServletRequest;
 import java.io.File;
 import java.io.IOException;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/file")
 public class FileController {
 
-    // 上传目录
-    private static final String UPLOAD_DIR = System.getProperty("user.dir") + "/files/";
+    private static final long NEWS_COVER_MAX_SIZE = 5L * 1024 * 1024;
+    private static final long NEWS_VIDEO_MAX_SIZE = 80L * 1024 * 1024;
+
+    private static final Set<String> IMAGE_SUFFIXES = new HashSet<>(Arrays.asList(
+            ".jpg", ".jpeg", ".png", ".gif", ".webp"
+    ));
+    private static final Set<String> NEWS_VIDEO_SUFFIXES = new HashSet<>(Arrays.asList(
+            ".mp4", ".webm", ".mov"
+    ));
+
+    private final RequestAuthUtil requestAuthUtil;
+    private final String uploadDir;
+
+    public FileController(RequestAuthUtil requestAuthUtil,
+                          @Value("${app.upload-dir:}") String configuredUploadDir) {
+        this.requestAuthUtil = requestAuthUtil;
+        this.uploadDir = resolveUploadDir(configuredUploadDir);
+    }
 
     @PostMapping("/upload")
     public Result<String> upload(@RequestParam("file") MultipartFile file) {
-        if (file.isEmpty()) {
+        return storeFile(file, "", null, 0L, "文件格式不正确", "文件上传失败");
+    }
+
+    @PostMapping("/upload/avatar")
+    public Result<String> uploadAvatar(@RequestParam("file") MultipartFile file) {
+        return storeFile(
+                file,
+                "avatars",
+                IMAGE_SUFFIXES,
+                NEWS_COVER_MAX_SIZE,
+                "仅支持 jpg、jpeg、png、gif、webp 格式的图片",
+                "头像大小不能超过 5 MB"
+        );
+    }
+
+    @PostMapping("/upload/news-cover")
+    public Result<String> uploadNewsCover(@RequestParam("file") MultipartFile file, HttpServletRequest request) {
+        if (!requestAuthUtil.isAdmin(request)) {
+            return Result.error("只有管理员可以上传资讯封面");
+        }
+        return storeFile(
+                file,
+                "news/covers",
+                IMAGE_SUFFIXES,
+                NEWS_COVER_MAX_SIZE,
+                "资讯封面仅支持 jpg、jpeg、png、gif、webp 格式",
+                "资讯封面大小不能超过 5 MB"
+        );
+    }
+
+    @PostMapping("/upload/news-video")
+    public Result<String> uploadNewsVideo(@RequestParam("file") MultipartFile file, HttpServletRequest request) {
+        if (!requestAuthUtil.isAdmin(request)) {
+            return Result.error("只有管理员可以上传资讯视频");
+        }
+        return storeFile(
+                file,
+                "news/videos",
+                NEWS_VIDEO_SUFFIXES,
+                NEWS_VIDEO_MAX_SIZE,
+                "资讯视频仅支持 mp4、webm、mov 格式",
+                "资讯视频大小不能超过 80 MB"
+        );
+    }
+
+    private Result<String> storeFile(MultipartFile file,
+                                     String subDirectory,
+                                     Set<String> allowedSuffixes,
+                                     long maxSize,
+                                     String invalidFormatMessage,
+                                     String oversizeMessage) {
+        if (file == null || file.isEmpty()) {
             return Result.error("上传文件不能为空");
         }
 
+        String originalFilename = file.getOriginalFilename();
+        String suffix = extractSuffix(originalFilename);
+        if (!StringUtils.hasText(suffix)) {
+            return Result.error("文件格式不正确");
+        }
+
+        if (allowedSuffixes != null && !allowedSuffixes.contains(suffix)) {
+            return Result.error(invalidFormatMessage);
+        }
+
+        if (maxSize > 0 && file.getSize() > maxSize) {
+            return Result.error(oversizeMessage);
+        }
+
+        File directory = resolveDirectory(subDirectory);
+        if (!directory.exists() && !directory.mkdirs()) {
+            return Result.error("上传目录创建失败");
+        }
+
+        String newFileName = UUID.randomUUID() + suffix;
+        File destination = new File(directory, newFileName);
         try {
-            // 1. 检查目录是否存在，不存在则创建
-            File dir = new File(UPLOAD_DIR);
-            if (!dir.exists()) {
-                dir.mkdirs();
-            }
-
-            // 2. 生成唯一文件名 (防止文件名冲突)
-            String originalFilename = file.getOriginalFilename();
-            if (originalFilename == null || !originalFilename.contains(".")) {
-                return Result.error("文件格式不正确");
-            }
-            String suffix = originalFilename.substring(originalFilename.lastIndexOf("."));
-            String newFileName = UUID.randomUUID().toString() + suffix;
-
-            // 3. 保存文件到本地硬盘
-            File dest = new File(UPLOAD_DIR + newFileName);
-            file.transferTo(dest);
-
-            // 4. 返回可访问的 URL 地址
-            String fileUrl = "/files/" + newFileName;
-            return Result.success(fileUrl);
-        } catch (IOException e) {
-            e.printStackTrace();
-            return Result.error("文件上传失败：" + e.getMessage());
+            file.transferTo(destination);
+            return Result.success(buildPublicPath(subDirectory, newFileName));
+        } catch (IOException exception) {
+            exception.printStackTrace();
+            return Result.error("文件上传失败：" + exception.getMessage());
         }
     }
 
-    // 专门用于头像上传的接口
-    @PostMapping("/upload/avatar")
-    public Result<String> uploadAvatar(@RequestParam("file") MultipartFile file) {
-        if (file.isEmpty()) {
-            return Result.error("上传文件不能为空");
+    private String extractSuffix(String originalFilename) {
+        if (!StringUtils.hasText(originalFilename) || !originalFilename.contains(".")) {
+            return null;
         }
+        return originalFilename.substring(originalFilename.lastIndexOf(".")).toLowerCase(Locale.ROOT);
+    }
 
-        // 验证文件类型，只允许图片
-        String originalFilename = file.getOriginalFilename();
-        if (originalFilename == null) {
-            return Result.error("文件格式不正确");
+    private File resolveDirectory(String subDirectory) {
+        if (!StringUtils.hasText(subDirectory)) {
+            return new File(uploadDir);
         }
-        String suffix = originalFilename.substring(originalFilename.lastIndexOf(".")).toLowerCase();
-        if (!suffix.matches(".*\\.(jpg|jpeg|png|gif|webp)$")) {
-            return Result.error("只支持 jpg、jpeg、png、gif、webp 格式的图片");
-        }
+        return new File(uploadDir, normalizeSubDirectory(subDirectory));
+    }
 
-        // 调用通用上传方法
-        return upload(file);
+    private String buildPublicPath(String subDirectory, String fileName) {
+        String normalizedSubDirectory = normalizeSubDirectory(subDirectory);
+        if (!StringUtils.hasText(normalizedSubDirectory)) {
+            return "/files/" + fileName;
+        }
+        return "/files/" + normalizedSubDirectory.replace(File.separatorChar, '/') + "/" + fileName;
+    }
+
+    private String normalizeSubDirectory(String subDirectory) {
+        return StringUtils.hasText(subDirectory)
+                ? subDirectory.replace("/", File.separator).replace("\\", File.separator)
+                : "";
+    }
+
+    private String resolveUploadDir(String configuredUploadDir) {
+        String baseDir = StringUtils.hasText(configuredUploadDir)
+                ? configuredUploadDir.trim()
+                : System.getProperty("user.dir") + File.separator + "files";
+        if (baseDir.endsWith(File.separator)) {
+            return baseDir;
+        }
+        return baseDir + File.separator;
     }
 }

@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "generatedManuallyAt": "2026-03-12",
+  "items": [
+    {
+      "id": "placeholder-project-cover",
+      "path": "/materials/placeholders/project-cover.svg",
+      "type": "image",
+      "role": "project-cover-fallback",
+      "license": "project-owned",
+      "status": "active"
+    },
+    {
+      "id": "placeholder-avatar",
+      "path": "/materials/placeholders/avatar.svg",
+      "type": "image",
+      "role": "avatar-fallback",
+      "license": "project-owned",
+      "status": "active"
+    },
+    {
+      "id": "placeholder-ai-assistant",
+      "path": "/materials/placeholders/ai-assistant.svg",
+      "type": "image",
+      "role": "ai-avatar-fallback",
+      "license": "project-owned",
+      "status": "active"
+    }
+  ]
+}

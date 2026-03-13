@@ -25,13 +25,29 @@ spring:
     name: ich-promotion-system
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
-    url: ${DB_URL:jdbc:mysql://localhost:3306/ich_promotion_db?serverTimezone=Asia/Shanghai&useUnicode=true&characterEncoding=utf-8&useSSL=false}
-    username: ${DB_USERNAME:root}
-    password: ${DB_PASSWORD:12345678}
+    url: jdbc:mysql://127.0.0.1:3306/ich_promotion_db?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai
+    username: root
+    password: 12345678
+  cache:
+    type: redis
+    redis:
+      time-to-live: 3600000 # 1小时默认缓存时间
+      cache-null-values: false
   servlet:
     multipart:
       max-file-size: 100MB
       max-request-size: 100MB
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+    metrics:
+      enabled: true
   redis:
     enabled: true
     host: 127.0.0.1
@@ -54,8 +70,8 @@ mybatis-plus:
 
 deepseek:
   api:
-    key: ${DEEPSEEK_API_KEY:change-me}
+    key: ${DEEPSEEK_API_KEY:}
 
 jwt:
-  secret: ${JWT_SECRET:ichPromotionSystemSecretKey202603021530NonHeritage}
+  secret: ${JWT_SECRET:dGhpcy1pcy1hLXZlcnktc2VjdXJlLWtleS1mb3Itand0LW11c3QtYmUtYXQtbGVhc3QtMjU2LWJpdHM=}
   expiration: 86400000

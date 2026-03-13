@@ -11,6 +11,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.test.context.TestPropertySource;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verify;
@@ -72,5 +73,15 @@ class VerificationCodeServiceTest {
 
         assertThat(result.getCode()).isEqualTo(500);
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM verification_code", Integer.class)).isZero();
+    }
+
+    @Test
+    void sendCodeRejectsWhenMailServiceIsNotConfigured() {
+        ReflectionTestUtils.setField(verificationCodeService, "senderAddress", "");
+
+        Result<Boolean> result = verificationCodeService.sendCode("user@test.com");
+
+        assertThat(result.getCode()).isEqualTo(500);
+        assertThat(result.getMsg()).contains("邮件服务未配置");
     }
 }

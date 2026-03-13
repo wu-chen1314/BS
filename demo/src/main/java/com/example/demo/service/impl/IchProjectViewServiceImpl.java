@@ -46,4 +46,16 @@ public class IchProjectViewServiceImpl extends ServiceImpl<IchProjectViewMapper,
 
         return viewRecord.getViewCount();
     }
+
+    @Override
+    public Long getCurrentViewCount(Long projectId) {
+        if (projectId == null) {
+            return 0L;
+        }
+
+        LambdaQueryWrapper<IchProjectView> query = new LambdaQueryWrapper<>();
+        query.eq(IchProjectView::getProjectId, projectId);
+        IchProjectView viewRecord = this.getOne(query);
+        return viewRecord == null || viewRecord.getViewCount() == null ? 0L : viewRecord.getViewCount();
+    }
 }

@@ -1,264 +1,505 @@
 <template>
-    <div class="hot-ranking-container">
-        <div class="page-header">
-            <h2 class="page-title">非遗项目热度排行榜</h2>
-            <p class="page-subtitle">探索最受欢迎的非遗文化瑰宝</p>
+  <div class="ranking-page">
+    <section class="hero heritage-float-card">
+      <div class="hero-copy">
+        <p class="page-kicker">HOT HERITAGE RANKING</p>
+        <h1>非遗热度排行</h1>
+        <p class="page-desc">
+          热度页现在优先复用首页概览缓存，只在你主动刷新时强制拉新，切页时不会再整块闪烁。浏览量与首页项目详情、热榜和防刷冷却策略保持同一口径。
+        </p>
+        <div class="page-actions">
+          <el-tag effect="plain" type="warning">{{ rankingSourceLabel }}</el-tag>
+          <el-button round :loading="loading" @click="loadRanking(true)">刷新排行</el-button>
+        </div>
+      </div>
+
+      <div class="hero-metrics">
+        <article class="metric-card heritage-float-card">
+          <span>入榜项目</span>
+          <strong>{{ rankingList.length }}</strong>
+          <p>当前榜单收录的项目数量</p>
+        </article>
+        <article class="metric-card heritage-float-card">
+          <span>总热度</span>
+          <strong>{{ totalRankViews }}</strong>
+          <p>榜单项目累计浏览总量</p>
+        </article>
+        <article class="metric-card heritage-float-card">
+          <span>平均热度</span>
+          <strong>{{ averageRankViews }}</strong>
+          <p>用于快速判断整体关注度水平</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="content-grid">
+    <article class="podium-panel heritage-float-card" v-loading="loading" element-loading-text="正在加载热度排行...">
+        <div class="section-head">
+          <div>
+            <p class="section-kicker">TOP 3</p>
+            <h2>热度前三</h2>
+          </div>
+          <span class="section-note">点击项目可直接回到首页详情</span>
         </div>
 
-        <div class="ranking-content">
-            <div v-if="loading" class="loading-container">
-                <el-skeleton :rows="8" animated />
-            </div>
+        <el-alert
+          v-if="errorMessage"
+          class="section-alert"
+          type="warning"
+          :closable="false"
+          show-icon
+          :title="errorMessage"
+        />
 
-            <div v-else-if="hotProjects.length === 0" class="empty-container">
-                <el-empty description="暂无热度数据" :image-size="200" />
-            </div>
+      <el-empty v-if="!loading && rankingList.length === 0" description="当前还没有热度排行数据" :image-size="120" />
 
-            <div v-else class="ranking-list">
-                <div v-for="(item, index) in hotProjects" :key="item.projectId" class="ranking-item"
-                    :class="{ 'top-ranking': index < 3 }" @click="handleView(item)">
-                    <div class="rank-number" :class="{ 'top-rank': index < 3 }">
-                        {{ index + 1 }}
-                    </div>
-                    <div class="project-info">
-                        <el-image
-                            :src="item.coverUrl || 'https://images.unsplash.com/photo-1599839575945-a9e5af0c3fa5?q=80&w=2069&auto=format&fit=crop'"
-                            class="project-cover" fit="cover" />
-                        <div class="project-details">
-                            <h3 class="project-title">{{ item.projectName }}</h3>
-                            <div class="project-stats">
-                                <span class="view-count">
-                                    <el-icon size="16">
-                                        <View />
-                                    </el-icon>
-                                    {{ item.viewCount }} 次浏览
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+        <div v-else class="podium-grid">
+          <button
+            v-for="(item, index) in topRanking"
+            :key="item.id"
+            type="button"
+            class="podium-card heritage-float-card"
+            :class="`place-${index + 1}`"
+            @click="handleView(item.id)"
+          >
+            <div class="podium-badge">TOP {{ index + 1 }}</div>
+            <img :src="buildStaticUrl(item.coverUrl) || fallbackCover" :alt="item.name" class="podium-cover" />
+            <div class="podium-copy">
+              <h3>{{ item.name }}</h3>
+              <p>{{ item.categoryName || "非遗项目" }}</p>
+              <strong>{{ item.viewCount || 0 }} 次浏览</strong>
             </div>
+          </button>
         </div>
-    </div>
+      </article>
+
+      <aside class="stream-panel heritage-float-card">
+        <div class="section-head">
+          <div>
+            <p class="section-kicker">RANK STREAM</p>
+            <h2>榜单走势</h2>
+          </div>
+          <span class="section-note">{{ rankingSourceLabel }}</span>
+        </div>
+
+        <div v-if="remainingRanking.length > 0" class="stream-list">
+          <button
+            v-for="(item, index) in remainingRanking"
+            :key="item.id"
+            type="button"
+            class="stream-item heritage-float-card"
+            @click="handleView(item.id)"
+          >
+            <div class="stream-top">
+              <span class="stream-rank">{{ index + 4 }}</span>
+              <strong>{{ item.name }}</strong>
+              <span class="stream-value">{{ item.viewCount || 0 }} 次</span>
+            </div>
+            <div class="stream-track">
+              <div class="stream-fill" :style="{ width: calcWidth(Number(item.viewCount || 0), maxRankViews) }"></div>
+            </div>
+            <p>{{ item.categoryName || "非遗项目" }}</p>
+          </button>
+        </div>
+          <el-empty v-else description="前三之外暂时没有更多项目" :image-size="86" />
+
+        <div class="hint-card">
+          <strong>热度说明</strong>
+          <p>榜单与项目详情共用同一套浏览统计；登录用户每次主动浏览都会即时更新，首页和热度排行会同步重排。</p>
+        </div>
+      </aside>
+    </section>
+  </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
-import axios from 'axios'
-import request from '@/utils/request'
-import { View } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import { computed, onMounted, ref } from "vue";
+import { storeToRefs } from "pinia";
+import { useRouter } from "vue-router";
+import { ElMessage } from "element-plus";
+import { MATERIAL_PLACEHOLDERS } from "@/constants/materials";
+import { useHeritageHubStore } from "@/stores/heritageHub";
+import type { HeritageProject } from "@/types/project";
+import { buildStaticUrl } from "@/utils/url";
 
-const router = useRouter()
-
-// 状态定义
-const hotProjects = ref<any[]>([])
-const loading = ref(false)
-
-// 获取热度排行榜数据
-const loadHotProjects = async () => {
-    loading.value = true
-    try {
-        const res = await request.get('/view/hot', {
-            params: { limit: 20 }
-        })
-        if (res.data.code === 200) {
-            if (res.data.data && res.data.data.length > 0) {
-                hotProjects.value = res.data.data.map((item: any) => ({
-                    projectId: item.id,
-                    projectName: item.name,
-                    viewCount: item.viewCount,
-                    coverUrl: item.coverUrl
-                }))
-            } else {
-                // 热度排行榜为空，获取所有项目
-                const projectRes = await request.get('/projects/page')
-                if (projectRes.data.code === 200 && projectRes.data.data && projectRes.data.data.records) {
-                    hotProjects.value = projectRes.data.data.records.map((item: any) => ({
-                        projectId: item.id,
-                        projectName: item.name,
-                        viewCount: 0,
-                        coverUrl: item.coverUrl
-                    }))
-                }
-            }
-        }
-    } catch (error) {
-        console.error('获取热度排行榜失败', error)
-        // 发生错误时，获取所有项目
-        try {
-            const projectRes = await request.get('/projects/page')
-            if (projectRes.data.code === 200 && projectRes.data.data && projectRes.data.data.records) {
-                hotProjects.value = projectRes.data.data.records.map((item: any) => ({
-                    projectId: item.id,
-                    projectName: item.name,
-                    viewCount: 0,
-                    coverUrl: item.coverUrl
-                }))
-            }
-        } catch (projectError) {
-            console.error('获取项目列表失败', projectError)
-            ElMessage.error('获取数据失败')
-        }
-    } finally {
-        loading.value = false
-    }
+interface RankingProject {
+  id: number;
+  name: string;
+  coverUrl?: string | null;
+  viewCount: number;
+  categoryName?: string | null;
 }
 
-// 查看项目详情
-const handleView = (item: any) => {
-    // 跳转到Home页面并传递项目ID
-    router.push({ path: '/home', query: { id: item.projectId } })
-}
+const router = useRouter();
+const hubStore = useHeritageHubStore();
+const { hotProjects, projects } = storeToRefs(hubStore);
 
-// 生命周期
-onMounted(() => {
-    loadHotProjects()
-})
+const fallbackCover = MATERIAL_PLACEHOLDERS.projectCover;
+
+const loading = ref(false);
+const errorMessage = ref("");
+
+const projectLookup = computed(
+  () =>
+    new Map(
+      projects.value
+        .filter((item): item is HeritageProject & { id: number } => Number.isFinite(Number(item.id)))
+        .map((item) => [Number(item.id), item])
+    )
+);
+
+const resolvedHotRanking = computed<RankingProject[]>(() =>
+  hotProjects.value
+    .map((item) => {
+      const projectId = Number(item.id);
+      if (!Number.isFinite(projectId) || projectId <= 0) {
+        return null;
+      }
+
+      const projectDetail = projectLookup.value.get(projectId);
+      return {
+        id: projectId,
+        name: projectDetail?.name || item.name || "未命名项目",
+        coverUrl: projectDetail?.coverUrl || item.coverUrl || null,
+        viewCount: Number(projectDetail?.viewCount ?? item.viewCount ?? 0),
+        categoryName: projectDetail?.categoryName ?? null,
+      };
+    })
+    .filter((item): item is RankingProject => Boolean(item))
+    .slice(0, 20)
+);
+
+const fallbackRanking = computed<RankingProject[]>(() =>
+  [...projects.value]
+    .filter((item): item is HeritageProject & { id: number } => Number.isFinite(Number(item.id)))
+    .sort((left, right) => Number(right.viewCount || 0) - Number(left.viewCount || 0))
+    .slice(0, 20)
+    .map((item) => ({
+      id: Number(item.id),
+      name: item.name,
+      coverUrl: item.coverUrl,
+      viewCount: Number(item.viewCount ?? 0),
+      categoryName: item.categoryName ?? null,
+    }))
+);
+
+const rankingList = computed(() =>
+  resolvedHotRanking.value.length > 0 ? resolvedHotRanking.value : fallbackRanking.value
+);
+const topRanking = computed(() => rankingList.value.slice(0, 3));
+const remainingRanking = computed(() => rankingList.value.slice(3));
+const rankingSourceLabel = computed(() =>
+  resolvedHotRanking.value.length > 0 ? "实时热榜" : "浏览量回退排序"
+);
+const totalRankViews = computed(() =>
+  rankingList.value.reduce((sum, item) => sum + Number(item.viewCount || 0), 0)
+);
+const averageRankViews = computed(() =>
+  rankingList.value.length > 0 ? Math.round(totalRankViews.value / rankingList.value.length) : 0
+);
+const maxRankViews = computed(() =>
+  Math.max(...rankingList.value.map((item) => Number(item.viewCount || 0)), 1)
+);
+
+const calcWidth = (value: number, max: number) => `${Math.max((Number(value || 0) / max) * 100, 8)}%`;
+
+const loadRanking = async (force = false) => {
+  loading.value = true;
+  errorMessage.value = "";
+  try {
+    await hubStore.ensureOverview({ force, hotLimit: 20, pageSize: 80 });
+  } catch (error: any) {
+    console.error("Failed to load hot ranking", error);
+    errorMessage.value = error?.message || "热度排行加载失败，当前结果可能不是最新数据。";
+    ElMessage.error("热度排行加载失败，请稍后重试");
+  } finally {
+    loading.value = false;
+  }
+};
+
+const handleView = (id?: number | null) => {
+  if (!Number.isFinite(Number(id)) || Number(id) <= 0) {
+    return;
+  }
+  router.push({ path: "/home", query: { id } });
+};
+
+onMounted(async () => {
+  await loadRanking();
+});
 </script>
 
 <style scoped>
-.hot-ranking-container {
-    min-height: 80vh;
-    padding: 30px 24px;
+.ranking-page {
+  min-height: calc(100vh - 88px);
+  display: grid;
+  gap: 18px;
+  padding: 12px 6px 28px;
 }
 
-.page-header {
-    text-align: center;
-    margin-bottom: 40px;
+.hero,
+.podium-panel,
+.stream-panel {
+  border-radius: 26px;
+  border: 1px solid var(--heritage-border);
+  background: rgba(255, 251, 244, 0.92);
+  box-shadow: var(--heritage-card-shadow-rest);
 }
 
-.page-title {
-    font-size: 28px;
-    font-weight: 600;
-    color: #303133;
-    margin-bottom: 10px;
-    font-family: 'Noto Serif SC', serif;
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
+  gap: 18px;
+  padding: 28px;
+  background:
+    radial-gradient(circle at top left, rgba(192, 57, 43, 0.12), transparent 28%),
+    linear-gradient(135deg, rgba(255, 249, 241, 0.96), rgba(255, 255, 255, 0.98));
 }
 
-.page-subtitle {
-    font-size: 16px;
-    color: #606266;
-    margin: 0;
+.hero-copy,
+.hero-metrics,
+.podium-grid,
+.stream-list {
+  display: grid;
+  gap: 14px;
 }
 
-.loading-container {
-    margin: 40px 0;
+.page-kicker,
+.section-kicker {
+  margin: 0 0 8px;
+  font-size: 12px;
+  letter-spacing: 0.2em;
+  color: var(--heritage-gold);
 }
 
-.empty-container {
-    text-align: center;
-    padding: 80px 0;
+.hero-copy h1,
+.section-head h2,
+.podium-copy h3,
+.stream-top strong {
+  margin: 0;
+  color: var(--heritage-ink);
 }
 
-.ranking-list {
-    max-width: 800px;
-    margin: 0 auto;
+.page-desc,
+.podium-copy p,
+.stream-item p,
+.hint-card p {
+  margin: 0;
+  line-height: 1.8;
+  color: var(--heritage-ink-soft);
 }
 
-.ranking-item {
-    display: flex;
-    align-items: center;
-    background: #fff;
-    border-radius: 12px;
-    padding: 20px;
-    margin-bottom: 20px;
-    box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.08);
-    transition: all 0.3s ease;
-    cursor: pointer;
+.page-actions,
+.section-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: flex-end;
+  flex-wrap: wrap;
 }
 
-.ranking-item:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 4px 16px 0 rgba(0, 0, 0, 0.12);
+.hero-metrics {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-.top-ranking {
-    background: linear-gradient(135deg, #fff3f3 0%, #fef0f0 100%);
-    border: 1px solid #fbc4c4;
+.metric-card {
+  border-radius: 20px;
+  padding: 18px;
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid rgba(113, 72, 44, 0.08);
 }
 
-.rank-number {
-    font-size: 32px;
-    font-weight: bold;
-    color: #909399;
-    margin-right: 24px;
-    min-width: 48px;
-    text-align: center;
+.metric-card span,
+.section-note,
+.podium-copy p,
+.stream-item p {
+  color: var(--heritage-ink-soft);
 }
 
-.top-rank {
-    color: #f56c6c;
+.metric-card strong {
+  display: block;
+  margin: 8px 0 6px;
+  font-size: 34px;
+  color: var(--heritage-primary);
 }
 
-.project-info {
-    flex: 1;
-    display: flex;
-    align-items: center;
+.content-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(300px, 0.9fr);
+  gap: 18px;
 }
 
-.project-cover {
-    width: 100px;
-    height: 100px;
-    border-radius: 8px;
-    margin-right: 20px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+.podium-panel,
+.stream-panel {
+  padding: 24px;
 }
 
-.project-details {
-    flex: 1;
+.section-alert {
+  margin: 16px 0;
 }
 
-.project-title {
-    font-size: 18px;
-    font-weight: 600;
-    color: #303133;
-    margin: 0 0 12px 0;
-    line-height: 1.4;
+.podium-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 18px;
 }
 
-.project-stats {
-    font-size: 14px;
-    color: #909399;
+.podium-card {
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  border-radius: 22px;
+  overflow: hidden;
+  background: linear-gradient(180deg, #fff, #fbf6ef);
+  box-shadow: 0 18px 36px rgba(72, 41, 28, 0.08);
 }
 
-.view-count {
-    display: flex;
-    align-items: center;
+.podium-card.place-1 {
+  background: linear-gradient(180deg, rgba(192, 57, 43, 0.14), rgba(255, 255, 255, 0.98));
 }
 
-.view-count .el-icon {
-    margin-right: 8px;
+.podium-card.place-2 {
+  background: linear-gradient(180deg, rgba(212, 175, 55, 0.14), rgba(255, 255, 255, 0.98));
+}
+
+.podium-card.place-3 {
+  background: linear-gradient(180deg, rgba(82, 190, 128, 0.14), rgba(255, 255, 255, 0.98));
+}
+
+.podium-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 16px 16px 0;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(28, 40, 51, 0.08);
+  color: var(--heritage-primary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.podium-cover {
+  width: calc(100% - 32px);
+  height: 180px;
+  margin: 14px 16px 0;
+  border-radius: 18px;
+  object-fit: cover;
+}
+
+.podium-copy {
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+}
+
+.podium-copy strong {
+  color: var(--heritage-primary);
+  font-size: 18px;
+}
+
+.stream-list {
+  margin-top: 18px;
+}
+
+.stream-item {
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  border-radius: 20px;
+  padding: 16px;
+  background: linear-gradient(180deg, #fff, #fbf6ef);
+}
+
+.stream-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.stream-rank {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(192, 138, 63, 0.12);
+  color: var(--heritage-primary);
+  font-weight: 700;
+}
+
+.stream-value {
+  margin-left: auto;
+  color: var(--heritage-primary);
+  white-space: nowrap;
+}
+
+.stream-track {
+  height: 10px;
+  margin: 12px 0 10px;
+  border-radius: 999px;
+  background: rgba(28, 40, 51, 0.08);
+  overflow: hidden;
+}
+
+.stream-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--heritage-primary), var(--heritage-gold));
+}
+
+.hint-card {
+  margin-top: 18px;
+  border-radius: 20px;
+  padding: 18px;
+  background: rgba(248, 246, 240, 0.92);
+  border: 1px solid rgba(113, 72, 44, 0.08);
+}
+
+.hint-card strong {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--heritage-ink);
+}
+
+@media (max-width: 1100px) {
+  .hero,
+  .content-grid,
+  .hero-metrics,
+  .podium-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 768px) {
-    .hot-ranking-container {
-        padding: 20px 16px;
-    }
+  .ranking-page {
+    padding: 10px 0 20px;
+  }
 
-    .page-title {
-        font-size: 24px;
-    }
+  .hero,
+  .podium-panel,
+  .stream-panel {
+    padding: 18px;
+  }
 
-    .ranking-item {
-        padding: 16px;
-    }
+  .page-actions,
+  .section-head,
+  .stream-top {
+    flex-direction: column;
+    align-items: flex-start;
+  }
 
-    .rank-number {
-        font-size: 24px;
-        margin-right: 16px;
-        min-width: 36px;
-    }
+  .podium-cover {
+    width: 100%;
+    margin: 14px 0 0;
+  }
 
-    .project-cover {
-        width: 80px;
-        height: 80px;
-        margin-right: 16px;
-    }
+  .podium-badge {
+    margin-left: 0;
+  }
 
-    .project-title {
-        font-size: 16px;
-    }
+  .stream-value {
+    margin-left: 0;
+  }
 }
 </style>

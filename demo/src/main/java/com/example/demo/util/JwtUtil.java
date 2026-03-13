@@ -14,7 +14,7 @@ import java.util.Map;
 @Component
 public class JwtUtil {
 
-    @Value("${jwt.secret:ichPromotionSystemSecretKey202603021530NonHeritage}")
+    @Value("${jwt.secret:}")
     private String secret;
 
     @Value("${jwt.expiration:86400000}")
@@ -24,6 +24,12 @@ public class JwtUtil {
 
     @PostConstruct
     public void init() {
+        if (secret == null || secret.trim().isEmpty()) {
+            throw new IllegalStateException("JWT_SECRET is required");
+        }
+        if (secret.trim().length() < 32) {
+            throw new IllegalStateException("JWT_SECRET must be at least 32 characters");
+        }
         this.key = Keys.hmacShaKeyFor(secret.getBytes());
     }
 

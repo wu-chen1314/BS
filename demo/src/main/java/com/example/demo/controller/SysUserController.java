@@ -12,6 +12,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
 import javax.servlet.http.HttpServletRequest;
+import java.time.LocalDateTime;
 import java.util.Map;
 
 @RestController
@@ -48,14 +49,33 @@ public class SysUserController {
         if (currentUserId == null) {
             return Result.error("未登录或令牌无效");
         }
-        if (user.getId() == null || (!requestAuthUtil.isAdmin(request) && !requestAuthUtil.isCurrentUser(request, user.getId()))) {
+
+        boolean admin = requestAuthUtil.isAdmin(request);
+        boolean editingSelf = user.getId() != null && requestAuthUtil.isCurrentUser(request, user.getId());
+        if (user.getId() == null || (!admin && !editingSelf)) {
             return Result.error("无权限修改其他用户信息");
         }
 
-        user.setPasswordHash(null);
-        user.setRole(null);
-        user.setUsername(null);
-        return Result.success(sysUserService.updateById(user));
+        SysUser existing = sysUserService.getById(user.getId());
+        if (existing == null) {
+            return Result.error("用户不存在");
+        }
+
+        SysUser updatePayload = new SysUser();
+        updatePayload.setId(existing.getId());
+        updatePayload.setNickname(StrUtil.emptyToNull(StrUtil.trim(user.getNickname())));
+        updatePayload.setEmail(StrUtil.emptyToNull(StrUtil.trim(user.getEmail())));
+        updatePayload.setPhone(StrUtil.emptyToNull(StrUtil.trim(user.getPhone())));
+        updatePayload.setAvatarUrl(StrUtil.emptyToNull(StrUtil.trim(user.getAvatarUrl())));
+        updatePayload.setRegionCode(StrUtil.emptyToNull(StrUtil.trim(user.getRegionCode())));
+        updatePayload.setUpdatedAt(LocalDateTime.now());
+
+        if (admin && !editingSelf) {
+            updatePayload.setRole(normalizeRole(user.getRole(), existing.getRole()));
+            updatePayload.setStatus(normalizeStatus(user.getStatus(), existing.getStatus()));
+        }
+
+        return Result.success(sysUserService.updateById(updatePayload));
     }
 
     @PostMapping("/add")
@@ -67,11 +87,19 @@ public class SysUserController {
             return Result.error("用户名不能为空");
         }
 
+        user.setUsername(user.getUsername().trim());
         long count = sysUserService.count(new LambdaQueryWrapper<SysUser>().eq(SysUser::getUsername, user.getUsername()));
         if (count > 0) {
             return Result.error("用户名已存在");
         }
 
+        user.setNickname(StrUtil.emptyToDefault(StrUtil.trim(user.getNickname()), user.getUsername()));
+        user.setEmail(StrUtil.emptyToNull(StrUtil.trim(user.getEmail())));
+        user.setPhone(StrUtil.emptyToNull(StrUtil.trim(user.getPhone())));
+        user.setRole(normalizeRole(user.getRole(), "user"));
+        user.setStatus(normalizeStatus(user.getStatus(), 1));
+        user.setCreatedAt(LocalDateTime.now());
+        user.setUpdatedAt(LocalDateTime.now());
         user.setPasswordHash(PasswordUtil.encode("123456"));
         return Result.success(sysUserService.save(user));
     }
@@ -99,6 +127,7 @@ public class SysUserController {
         } else {
             wrapper = new LambdaQueryWrapper<>();
         }
+        wrapper.orderByDesc(SysUser::getId);
 
         Page<SysUser> resultPage = sysUserService.page(page, wrapper);
         resultPage.getRecords().forEach(item -> item.setPasswordHash(null));
@@ -109,6 +138,14 @@ public class SysUserController {
     public Result<Boolean> delete(@PathVariable Long id, HttpServletRequest request) {
         if (!requestAuthUtil.isAdmin(request)) {
             return Result.error("无权限删除用户");
+        }
+
+        Long currentUserId = requestAuthUtil.getCurrentUserId(request);
+        if (currentUserId != null && currentUserId.equals(id)) {
+            return Result.error("不能删除当前登录用户");
+        }
+        if (sysUserService.getById(id) == null) {
+            return Result.error("用户不存在");
         }
         return Result.success(sysUserService.removeById(id));
     }
@@ -124,6 +161,7 @@ public class SysUserController {
             return Result.error("用户不存在");
         }
         user.setPasswordHash(PasswordUtil.encode("123456"));
+        user.setUpdatedAt(LocalDateTime.now());
         return Result.success(sysUserService.updateById(user));
     }
 
@@ -155,6 +193,21 @@ public class SysUserController {
         }
 
         user.setPasswordHash(PasswordUtil.encode(newPassword));
+        user.setUpdatedAt(LocalDateTime.now());
         return Result.success(sysUserService.updateById(user));
+    }
+
+    private String normalizeRole(String role, String fallback) {
+        if ("admin".equals(role) || "user".equals(role)) {
+            return role;
+        }
+        return fallback;
+    }
+
+    private Integer normalizeStatus(Integer status, Integer fallback) {
+        if (status != null && (status == 0 || status == 1)) {
+            return status;
+        }
+        return fallback;
     }
 }

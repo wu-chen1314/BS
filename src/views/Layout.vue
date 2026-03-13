@@ -9,15 +9,8 @@
         </div>
       </div>
 
-      <el-menu
-        class="sidebar-menu"
-        :default-active="activeMenu"
-        :collapse="isCollapse"
-        background-color="transparent"
-        text-color="#f7efe4"
-        active-text-color="#ffe5b8"
-        @select="handleMenuSelect"
-      >
+      <el-menu class="sidebar-menu" :default-active="activeMenu" :collapse="isCollapse" background-color="transparent"
+        text-color="#f7efe4" active-text-color="#ffe5b8" @select="handleMenuSelect">
         <el-menu-item v-for="item in visibleMenus" :key="item.index" :index="item.index">
           <el-icon>
             <component :is="item.icon" />
@@ -28,7 +21,7 @@
 
       <div v-if="!isCollapse" class="sidebar-foot">
         <span class="foot-label">当前身份</span>
-        <strong>{{ userInfo.role === "admin" ? "平台管理员" : "文化探索者" }}</strong>
+        <strong>{{ userRoleLabel }}</strong>
       </div>
     </aside>
 
@@ -36,7 +29,10 @@
       <header class="topbar">
         <div class="topbar-left">
           <button type="button" class="collapse-trigger" @click="isCollapse = !isCollapse">
-            <el-icon><Fold v-if="!isCollapse" /><Expand v-else /></el-icon>
+            <el-icon>
+              <Fold v-if="!isCollapse" />
+              <Expand v-else />
+            </el-icon>
           </button>
           <div class="page-meta">
             <p class="page-kicker">DIGITAL HERITAGE EXPERIENCE</p>
@@ -52,15 +48,17 @@
             </el-breadcrumb-item>
           </el-breadcrumb>
 
-          <el-popover placement="bottom" :width="280" trigger="click">
+          <el-popover placement="bottom" :width="300" trigger="click">
             <template #reference>
               <button type="button" class="notice-trigger">
-                <el-icon><Bell /></el-icon>
+                <el-icon>
+                  <Bell />
+                </el-icon>
               </button>
             </template>
             <div class="notice-panel">
               <strong>平台提醒</strong>
-              <p>近期重点关注地区分类、主题策展和非遗路线的联动展示。</p>
+              <p>近期重点优化主题策展、非遗路线、地区分类和研学工坊的联动体验。</p>
             </div>
           </el-popover>
 
@@ -69,9 +67,11 @@
               <el-avatar :size="34" :src="avatarUrl" />
               <div class="user-copy">
                 <strong>{{ userInfo.nickname || userInfo.username || "未登录用户" }}</strong>
-                <span>{{ userInfo.role === "admin" ? "管理员" : "普通用户" }}</span>
+                <span>{{ userRoleLabel }}</span>
               </div>
-              <el-icon><ArrowDown /></el-icon>
+              <el-icon>
+                <ArrowDown />
+              </el-icon>
             </button>
             <template #dropdown>
               <el-dropdown-menu>
@@ -91,7 +91,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch, type Component } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
   ArrowDown,
@@ -103,29 +103,48 @@ import {
   Fold,
   Guide,
   Location,
+  Reading,
   Setting,
   Star,
   TrendCharts,
   User,
+  Trophy,
+  Document,
 } from "@element-plus/icons-vue";
-import { ElMessage, ElMessageBox } from "element-plus";
+import {
+  getCurrentUser,
+  SESSION_CHANGED_EVENT,
+  type SessionUser,
+} from "@/utils/session";
+import { MATERIAL_PLACEHOLDERS } from "@/constants/materials";
 import { buildStaticUrl } from "@/utils/url";
+import { useHeritageHubStore } from "@/stores/heritageHub";
+import errorHandler from "@/utils/errorHandler";
+import { confirmManualLogout, isDialogDismissError, performLogout } from "@/utils/logout";
 
-const router = useRouter();
-const route = useRoute();
-const isCollapse = ref(false);
+type UserRole = "admin" | "user";
 
-const userInfo = ref<any>({
+interface MenuItem {
+  index: string;
+  label: string;
+  icon: Component;
+  roles?: UserRole[];
+}
+
+const DEFAULT_USER: SessionUser = {
   role: "user",
   nickname: "",
   username: "",
   avatarUrl: "",
-});
+};
 
-const menus = [
+const menus: MenuItem[] = [
   { index: "/home", label: "非遗项目", icon: DataLine },
+  { index: "/news", label: "资讯动态", icon: Document },
+  { index: "/quiz", label: "知识竞答", icon: Trophy },
   { index: "/curation", label: "主题策展", icon: CollectionTag },
   { index: "/heritage-trail", label: "非遗路线", icon: Guide },
+  { index: "/learning-studio", label: "研学工坊", icon: Reading },
   { index: "/region-category", label: "地区分类", icon: Location },
   { index: "/hot-ranking", label: "热度排行", icon: TrendCharts },
   { index: "/chat", label: "AI 助手", icon: ChatLineRound },
@@ -134,17 +153,34 @@ const menus = [
   { index: "/user", label: "用户管理", icon: Setting, roles: ["admin"] },
 ];
 
+const router = useRouter();
+const route = useRoute();
+const hubStore = useHeritageHubStore();
+const isCollapse = ref(false);
+const userInfo = ref<SessionUser>({ ...DEFAULT_USER });
+const hasSyncedSession = ref(false);
+const hadAuthenticatedUser = ref(false);
+const logoutPending = ref(false);
+
+const normalizedUserRole = computed<UserRole>(() => (userInfo.value.role === "admin" ? "admin" : "user"));
+
 const visibleMenus = computed(() =>
-  menus.filter((item) => !item.roles || item.roles.includes(userInfo.value.role || "user"))
+  menus.filter((item) => !item.roles || item.roles.includes(normalizedUserRole.value))
 );
 
-const activeMenu = computed(() => route.path);
+const activeMenu = computed(() => {
+  const matchedMenu = [...visibleMenus.value]
+    .sort((left, right) => right.index.length - left.index.length)
+    .find((item) => route.path === item.index || route.path.startsWith(`${item.index}/`));
+
+  return matchedMenu?.index || "";
+});
 
 const pageTitle = computed(() => String(route.meta.title || "非遗数字传承平台"));
 
 const breadcrumbs = computed(() =>
   route.matched
-    .filter((item) => item.meta?.title && item.path !== "/")
+    .filter((item) => item.meta?.title && item.path !== "/" && item.path !== "/home")
     .map((item) => ({
       path: item.path,
       title: String(item.meta.title),
@@ -153,48 +189,80 @@ const breadcrumbs = computed(() =>
 
 const avatarUrl = computed(
   () =>
-    buildStaticUrl(userInfo.value.avatarUrl) ||
-    "https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png"
+    buildStaticUrl(userInfo.value.avatarUrl) || MATERIAL_PLACEHOLDERS.avatar
 );
 
+const userRoleLabel = computed(() => (normalizedUserRole.value === "admin" ? "平台管理员" : "文化探索者"));
+
 const handleMenuSelect = (index: string) => {
+  if (route.path === index) {
+    return;
+  }
+
   router.push(index);
 };
 
-const handleCommand = (command: string) => {
+const handleCommand = async (command: string) => {
   if (command === "profile") {
-    router.push("/profile");
+    await router.push("/profile");
     return;
   }
 
   if (command === "logout") {
-    ElMessageBox.confirm("确认退出当前账号吗？", "提示", { type: "warning" })
-      .then(() => {
-        sessionStorage.removeItem("user");
-        sessionStorage.removeItem("token");
-        sessionStorage.removeItem("tokenExpires");
-        router.push("/login");
-        ElMessage.success("已退出登录");
-      })
-      .catch(() => {});
+    if (logoutPending.value) {
+      return;
+    }
+
+    try {
+      logoutPending.value = true;
+      await confirmManualLogout({
+        user: userInfo.value,
+      });
+      await performLogout({
+        clearState: () => hubStore.clearAllCaches(),
+        hardRedirect: true,
+        router,
+        showSuccessMessage: true,
+      });
+    } catch (error: any) {
+      if (isDialogDismissError(error)) {
+        return;
+      }
+
+      console.error("退出登录失败:", error);
+      errorHandler.showSimpleError("退出登录失败，请稍后重试");
+    } finally {
+      logoutPending.value = false;
+    }
   }
 };
 
 const loadUserInfo = () => {
-  const userStr = sessionStorage.getItem("user");
-  if (!userStr) {
-    return;
-  }
+  const user = getCurrentUser();
+  const shouldClearCaches = !user && (!hasSyncedSession.value || hadAuthenticatedUser.value);
+  userInfo.value = user || { ...DEFAULT_USER };
+  hasSyncedSession.value = true;
+  hadAuthenticatedUser.value = Boolean(user);
 
-  try {
-    userInfo.value = JSON.parse(userStr);
-  } catch (error) {
-    console.error("Failed to parse user session", error);
+  if (shouldClearCaches) {
+    hubStore.clearAllCaches();
   }
 };
 
+watch(
+  () => route.fullPath,
+  () => {
+    loadUserInfo();
+  },
+  { immediate: true }
+);
+
 onMounted(() => {
-  loadUserInfo();
+  window.addEventListener(SESSION_CHANGED_EVENT, loadUserInfo);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener(SESSION_CHANGED_EVENT, loadUserInfo);
 });
 </script>
 
@@ -204,21 +272,25 @@ onMounted(() => {
   display: grid;
   grid-template-columns: auto 1fr;
   background:
-    radial-gradient(circle at top left, rgba(196, 30, 58, 0.12), transparent 28%),
-    linear-gradient(180deg, #f7f3ee 0%, #eef3f7 100%);
+    radial-gradient(circle at top left, rgba(192, 138, 63, 0.14), transparent 30%),
+    radial-gradient(circle at 82% 8%, rgba(164, 59, 47, 0.08), transparent 18%),
+    linear-gradient(180deg, var(--heritage-paper-soft) 0%, var(--heritage-paper) 100%);
 }
 
 .sidebar {
   width: 272px;
-  background:
-    linear-gradient(180deg, rgba(32, 44, 63, 0.98) 0%, rgba(53, 71, 96, 0.98) 100%),
-    #233044;
+  background: rgba(28, 40, 51, 0.85);
+  /* heritage-ink with transparency */
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-right: 1px solid rgba(255, 255, 255, 0.05);
   color: #f7efe4;
   padding: 24px 16px;
   display: flex;
   flex-direction: column;
   gap: 20px;
-  transition: width 0.24s ease;
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 100;
 }
 
 .sidebar.collapsed {
@@ -240,9 +312,9 @@ onMounted(() => {
   place-items: center;
   font-size: 22px;
   font-weight: 700;
-  color: #fff6e4;
-  background: linear-gradient(135deg, #c41e3a, #d8863d);
-  box-shadow: 0 12px 28px rgba(196, 30, 58, 0.28);
+  color: var(--heritage-paper-soft);
+  background: linear-gradient(135deg, var(--heritage-primary), var(--heritage-primary-soft));
+  box-shadow: 0 12px 28px rgba(192, 57, 43, 0.3);
 }
 
 .brand-copy {
@@ -274,8 +346,10 @@ onMounted(() => {
 }
 
 .sidebar-menu :deep(.el-menu-item.is-active) {
-  background: linear-gradient(90deg, rgba(196, 30, 58, 0.92), rgba(216, 134, 61, 0.82));
-  box-shadow: 0 10px 24px rgba(196, 30, 58, 0.24);
+  background: linear-gradient(90deg, rgba(192, 57, 43, 0.9), rgba(230, 126, 34, 0.8));
+  box-shadow: 0 8px 20px rgba(192, 57, 43, 0.25);
+  transform: translateX(4px);
+  transition: all 0.3s ease;
 }
 
 .sidebar-foot {
@@ -315,19 +389,30 @@ onMounted(() => {
 .collapse-trigger,
 .notice-trigger,
 .user-entry {
-  border: none;
-  background: #fff;
+  border: 1px solid var(--heritage-glass-border);
+  background: var(--heritage-glass-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.collapse-trigger:hover,
+.notice-trigger:hover,
+.user-entry:hover {
+  background: rgba(255, 255, 255, 0.9);
+  transform: translateY(-2px);
+  box-shadow: var(--heritage-card-shadow-hover);
 }
 
 .collapse-trigger {
-  width: 44px;
-  height: 44px;
+  width: 46px;
+  height: 46px;
   border-radius: 14px;
   display: grid;
   place-items: center;
   font-size: 18px;
-  box-shadow: 0 10px 28px rgba(44, 62, 80, 0.08);
+  box-shadow: var(--heritage-glass-shadow);
 }
 
 .page-meta {
@@ -339,35 +424,35 @@ onMounted(() => {
 .page-meta h1 {
   margin: 0;
   font-size: 26px;
-  color: #1f2c3d;
+  color: var(--heritage-ink);
 }
 
 .page-kicker {
   margin: 0;
   font-size: 11px;
   letter-spacing: 0.24em;
-  color: #a66a3f;
+  color: var(--heritage-gold);
 }
 
 .notice-trigger {
-  width: 42px;
-  height: 42px;
+  width: 44px;
+  height: 44px;
   border-radius: 14px;
   display: grid;
   place-items: center;
-  box-shadow: 0 10px 28px rgba(44, 62, 80, 0.08);
+  box-shadow: var(--heritage-glass-shadow);
 }
 
 .notice-panel strong {
   display: block;
   margin-bottom: 8px;
-  color: #1f2c3d;
+  color: var(--heritage-ink);
 }
 
 .notice-panel p {
   margin: 0;
   line-height: 1.7;
-  color: #5f6f82;
+  color: var(--heritage-ink-soft);
 }
 
 .user-entry {
@@ -375,8 +460,8 @@ onMounted(() => {
   align-items: center;
   gap: 12px;
   border-radius: 16px;
-  padding: 8px 12px 8px 8px;
-  box-shadow: 0 10px 28px rgba(44, 62, 80, 0.08);
+  padding: 8px 14px 8px 8px;
+  box-shadow: var(--heritage-glass-shadow);
 }
 
 .user-copy {
@@ -388,12 +473,12 @@ onMounted(() => {
 
 .user-copy strong {
   font-size: 14px;
-  color: #1f2c3d;
+  color: var(--heritage-ink);
 }
 
 .user-copy span {
   font-size: 12px;
-  color: #8a96a3;
+  color: var(--heritage-muted);
 }
 
 .content-panel {

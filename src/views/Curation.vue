@@ -1,64 +1,80 @@
 <template>
   <div class="curation-page">
-    <section class="hero">
-      <div class="hero-copy">
+    <section class="hero" v-loading="loading" element-loading-text="正在加载主题策展...">
+      <div class="hero-copy heritage-float-card">
         <p class="hero-kicker">INTANGIBLE HERITAGE CURATION</p>
         <h1>非遗主题策展</h1>
         <p class="hero-desc">
-          把项目、地区和热度数据重新编排成更好逛的文化专题。你可以从技艺、节俗、声腔三个角度进入，快速找到值得深入阅读的非遗内容。
+          将项目、地区热度、传承人与研学需求重新编排成适合传播、展示和讲述的专题内容。
+          你可以从工艺、节俗、演艺三个方向进入，再继续联动到研学工坊与非遗路线。
         </p>
         <div class="hero-actions">
-          <el-button type="primary" size="large" round @click="selectedTheme = themes[0].id">进入今日策展</el-button>
-          <el-button size="large" round @click="goHome">返回项目展馆</el-button>
+          <el-button type="primary" size="large" round @click="goLinkedLearningStudio">
+            联动研学工坊
+          </el-button>
+          <el-button size="large" round @click="goLinkedTrail">生成主题路线</el-button>
+          <el-button size="large" round @click="goHome">返回项目总览</el-button>
         </div>
       </div>
 
-      <div class="hero-panel">
-        <div class="panel-card headline">
-          <span class="panel-label">本期主题</span>
+      <div class="hero-panel heritage-float-card">
+        <div class="panel-card headline heritage-float-card">
+          <span class="panel-label">当前主题</span>
           <strong>{{ activeTheme.title }}</strong>
           <p>{{ activeTheme.subtitle }}</p>
         </div>
         <div class="panel-grid">
-          <div class="panel-card">
-            <span class="panel-label">项目采样</span>
-            <strong>{{ stats.projectCount }}</strong>
-            <p>已纳入专题筛选</p>
+          <div class="panel-card heritage-float-card">
+            <span class="panel-label">主题项目</span>
+            <strong>{{ filteredProjects.length }}</strong>
+            <p>按当前策展主题筛出的重点项目</p>
           </div>
-          <div class="panel-card">
-            <span class="panel-label">热门项目</span>
-            <strong>{{ hotProjects.length }}</strong>
-            <p>同步热度榜单</p>
+          <div class="panel-card heritage-float-card">
+            <span class="panel-label">联动热榜</span>
+            <strong>{{ displayHotProjects.length }}</strong>
+            <p>优先展示与当前主题关联的热门项目</p>
           </div>
-          <div class="panel-card">
-            <span class="panel-label">覆盖地区</span>
-            <strong>{{ stats.regionCount }}</strong>
-            <p>来自地图统计</p>
+          <div class="panel-card heritage-float-card">
+            <span class="panel-label">覆盖热区</span>
+            <strong>{{ topRegions.length }}</strong>
+            <p>来自统计地图的重点地区</p>
+          </div>
+          <div class="panel-card heritage-float-card">
+            <span class="panel-label">联动研学</span>
+            <strong>{{ linkedTrack.title }}</strong>
+            <p>{{ linkedTrack.subtitle }}</p>
           </div>
         </div>
       </div>
     </section>
 
-    <section class="theme-strip">
-      <button
-        v-for="theme in themes"
-        :key="theme.id"
-        type="button"
-        class="theme-chip"
-        :class="{ active: theme.id === selectedTheme }"
-        @click="selectedTheme = theme.id"
-      >
-        <span>{{ theme.title }}</span>
-        <small>{{ theme.subtitle }}</small>
-      </button>
+    <section class="theme-strip heritage-float-card">
+      <div class="theme-strip-copy">
+        <p class="section-kicker">THEME NAVIGATOR</p>
+        <h2>切换策展主题</h2>
+        <p>主题切换会保留联动逻辑，但不再重新刷整页概览数据。</p>
+      </div>
+      <div class="theme-chip-grid">
+        <button
+          v-for="theme in CURATION_THEMES"
+          :key="theme.id"
+          type="button"
+          class="theme-chip heritage-float-card"
+          :class="{ active: theme.id === selectedTheme }"
+          @click="handleThemeSelect(theme.id)"
+        >
+          <span>{{ theme.title }}</span>
+          <small>{{ theme.subtitle }}</small>
+        </button>
+      </div>
     </section>
 
     <section class="content-grid">
-      <el-card class="collection-card" shadow="never">
+      <el-card class="collection-card heritage-float-card" shadow="never">
         <template #header>
           <div class="section-head">
             <div>
-              <p class="section-kicker">专题导览</p>
+              <p class="section-kicker">CURATION OVERVIEW</p>
               <h2>{{ activeTheme.title }}</h2>
             </div>
             <el-tag effect="dark" type="danger">{{ filteredProjects.length }} 个项目</el-tag>
@@ -67,40 +83,99 @@
 
         <p class="theme-description">{{ activeTheme.description }}</p>
 
+        <div class="integration-grid">
+          <article class="integration-item heritage-float-card">
+            <span>联动研学模板</span>
+            <strong>{{ linkedTrack.title }}</strong>
+            <p>{{ linkedTrack.audience }}</p>
+          </article>
+          <article class="integration-item heritage-float-card">
+            <span>路线预设</span>
+            <strong>{{ linkedTrailLabel }}</strong>
+            <p>{{ linkedTrailHint }}</p>
+          </article>
+          <article class="integration-item heritage-float-card">
+            <span>当前热区</span>
+            <strong>{{ primaryRegion?.name || "待补充" }}</strong>
+            <p>{{ primaryRegion ? `${primaryRegion.value} 个项目进入热点统计` : "将按主题自动生成路线重点区域" }}</p>
+          </article>
+        </div>
+
         <div class="collection-list">
-          <article v-for="item in filteredProjects" :key="item.id" class="collection-item" @click="goDetail(item.id)">
+          <article
+            v-for="item in filteredProjects"
+            :key="item.id"
+            class="collection-item heritage-float-card"
+            @click="goDetail(item.id)"
+          >
             <img :src="buildStaticUrl(item.coverUrl) || fallbackCover" :alt="item.name" class="item-cover" />
             <div class="item-content">
               <div class="item-topline">
-                <el-tag size="small" effect="plain">{{ item.protectLevel || '未定级' }}</el-tag>
-                <span>{{ item.regionName || '地区待补充' }}</span>
+                <el-tag size="small" effect="plain">{{ item.protectLevel || "未定级" }}</el-tag>
+                <span>{{ item.regionName || "地区待补充" }}</span>
               </div>
               <h3>{{ item.name }}</h3>
-              <p>{{ summarize(item.history) }}</p>
+              <p>{{ summarizeRichText(item.history, 86) }}</p>
               <div class="item-footer">
                 <span>{{ getCategoryName(item.categoryId) }}</span>
-                <span>{{ item.inheritorNames || '传承人信息待补充' }}</span>
+                <span>{{ item.inheritorNames || "传承人信息待补充" }}</span>
               </div>
             </div>
           </article>
 
-          <el-empty v-if="!filteredProjects.length" description="当前主题下暂无可展示项目" :image-size="120" />
+          <el-empty
+            v-if="!filteredProjects.length"
+            description="当前主题下还没有可展示的项目"
+            :image-size="120"
+          />
         </div>
       </el-card>
 
       <div class="side-column">
-        <el-card class="hot-card" shadow="never">
+        <el-card class="action-card heritage-float-card" shadow="never">
           <template #header>
             <div class="section-head compact">
               <div>
-                <p class="section-kicker">热度联动</p>
-                <h2>本周热荐</h2>
+                <p class="section-kicker">CURATION FLOW</p>
+                <h2>联动动作</h2>
+              </div>
+            </div>
+          </template>
+
+          <div class="action-list">
+            <button type="button" class="action-item heritage-float-card" @click="goLinkedLearningStudio">
+              <strong>进入研学工坊</strong>
+              <p>把当前主题直接映射成适合课堂、社区或亲子场景的研学方案。</p>
+            </button>
+            <button type="button" class="action-item heritage-float-card" @click="goLinkedTrail">
+              <strong>生成主题路线</strong>
+              <p>按主题门类、热点地区和推荐停留时长，快速生成可游览的非遗路线。</p>
+            </button>
+            <button type="button" class="action-item heritage-float-card" @click="goRegionCategory">
+              <strong>联动地区分类</strong>
+              <p>继续按区域筛选非遗项目，适合做地方文化专题与区域传播。</p>
+            </button>
+          </div>
+        </el-card>
+
+        <el-card class="hot-card heritage-float-card" shadow="never">
+          <template #header>
+            <div class="section-head compact">
+              <div>
+                <p class="section-kicker">HOT PICKS</p>
+                <h2>本周热榜</h2>
               </div>
             </div>
           </template>
 
           <div class="hot-list">
-            <button v-for="(item, index) in hotProjects" :key="item.id || index" class="hot-item" @click="goDetail(item.id)">
+            <button
+              v-for="(item, index) in displayHotProjects"
+              :key="item.id || index"
+              type="button"
+              class="hot-item heritage-float-card"
+              @click="goDetail(item.id)"
+            >
               <span class="hot-rank">{{ index + 1 }}</span>
               <div class="hot-copy">
                 <strong>{{ item.name }}</strong>
@@ -108,27 +183,39 @@
               </div>
               <el-icon><ArrowRight /></el-icon>
             </button>
+
+            <el-empty
+              v-if="!displayHotProjects.length"
+            description="当前主题下还没有联动热点项目"
+              :image-size="96"
+            />
           </div>
         </el-card>
 
-        <el-card class="region-card" shadow="never">
+        <el-card class="region-card heritage-float-card" shadow="never">
           <template #header>
             <div class="section-head compact">
               <div>
-                <p class="section-kicker">地域微展</p>
+                <p class="section-kicker">REGION FOCUS</p>
                 <h2>热门地区</h2>
               </div>
             </div>
           </template>
 
           <div class="region-list">
-            <div v-for="item in topRegions" :key="item.name" class="region-item">
+            <button
+              v-for="item in topRegions"
+              :key="item.name"
+              type="button"
+              class="region-item heritage-float-card"
+              @click="goRegionTrail(item.name)"
+            >
               <div>
                 <strong>{{ item.name }}</strong>
-                <p>{{ item.value }} 个项目被统计收录</p>
+                <p>{{ item.value }} 个项目进入热点统计，点击带入主题路线</p>
               </div>
               <span class="region-badge">{{ item.value }}</span>
-            </div>
+            </button>
           </div>
         </el-card>
       </div>
@@ -137,127 +224,189 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
-import { useRouter } from "vue-router";
+import { computed, onMounted, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import { ArrowRight } from "@element-plus/icons-vue";
-import request from "@/utils/request";
+import { ElMessage } from "element-plus";
+import { MATERIAL_PLACEHOLDERS } from "@/constants/materials";
+import { CURATION_THEMES, LEARNING_TRACKS } from "@/constants/heritage";
+import { useHeritageOverview } from "@/composables/useHeritageOverview";
+import type { HeritageProject } from "@/types/project";
+import { buildCustomTrailId, createDefaultTrailPlanner } from "@/utils/trail";
 import { buildStaticUrl } from "@/utils/url";
+import { filterProjectsByCategories, getCategoryName, sortRegionsByValue, summarizeRichText } from "@/utils/heritage";
 
-interface ThemeConfig {
-  id: string;
-  title: string;
-  subtitle: string;
-  description: string;
-  categoryIds: number[];
+interface DisplayHotProject {
+  id: number;
+  name: string;
+  viewCount: number;
+  categoryId?: number | null;
 }
 
 const router = useRouter();
-const fallbackCover = "https://images.unsplash.com/photo-1460661419201-fd4cecdf8a8b?q=80&w=1200&auto=format&fit=crop";
+const route = useRoute();
+const fallbackCover = MATERIAL_PLACEHOLDERS.projectCover;
 
-const themes: ThemeConfig[] = [
-  {
-    id: "craft",
-    title: "守艺匠心",
-    subtitle: "技艺与器物",
-    description: "聚焦手工技艺、传统美术与器物之美，适合快速了解非遗里的工艺谱系与审美结构。",
-    categoryIds: [7, 8, 9],
-  },
-  {
-    id: "festival",
-    title: "节序人间",
-    subtitle: "节俗与民间叙事",
-    description: "围绕民俗、民间文学和礼俗场景组织内容，更适合做节庆活动选题和校园传播。",
-    categoryIds: [1, 10],
-  },
-  {
-    id: "performance",
-    title: "声腔流韵",
-    subtitle: "戏剧、音乐与曲艺",
-    description: "把传统戏剧、传统音乐与曲艺集中展示，适合从可听可看的入口进入非遗。",
-    categoryIds: [2, 4, 5],
-  },
-];
+const selectedTheme = ref(CURATION_THEMES[0].id);
+const { projects, hotProjects, regionStats, loading, load } = useHeritageOverview();
 
-const selectedTheme = ref(themes[0].id);
-const projects = ref<any[]>([]);
-const hotProjects = ref<any[]>([]);
-const regionStats = ref<any[]>([]);
+const activeTheme = computed(
+  () => CURATION_THEMES.find((item) => item.id === selectedTheme.value) || CURATION_THEMES[0]
+);
+const filteredProjects = computed(() =>
+  filterProjectsByCategories(projects.value, activeTheme.value.categoryIds).slice(0, 6)
+);
+const topRegions = computed(() => sortRegionsByValue(regionStats.value).slice(0, 5));
+const primaryRegion = computed(() => topRegions.value[0] || null);
+const projectLookup = computed(
+  () =>
+    new Map(
+      projects.value
+        .filter((item): item is HeritageProject & { id: number } => Number.isFinite(Number(item.id)))
+        .map((item) => [Number(item.id), item])
+    )
+);
+const linkedTrack = computed(
+  () => LEARNING_TRACKS.find((item) => item.linkedThemeId === activeTheme.value.id) || LEARNING_TRACKS[0]
+);
+const displayHotProjects = computed<DisplayHotProject[]>(() => {
+  const resolvedHotProjects = hotProjects.value
+    .map((item) => {
+      const projectId = Number(item.id);
+      if (!Number.isFinite(projectId) || projectId <= 0) {
+        return null;
+      }
 
-const stats = computed(() => ({
-  projectCount: projects.value.length,
-  regionCount: regionStats.value.length,
+      const projectDetail = projectLookup.value.get(projectId);
+      return {
+        id: projectId,
+        name: projectDetail?.name || item.name || "未命名项目",
+        viewCount: Number(projectDetail?.viewCount ?? item.viewCount ?? 0),
+        categoryId: projectDetail?.categoryId ?? null,
+      };
+    })
+    .filter((item): item is DisplayHotProject => Boolean(item));
+
+  const themedHotProjects = resolvedHotProjects.filter((item) =>
+    activeTheme.value.categoryIds.includes(Number(item.categoryId))
+  );
+
+  return (themedHotProjects.length > 0 ? themedHotProjects : resolvedHotProjects).slice(0, 6);
+});
+const linkedPlanner = computed(() => ({
+  ...createDefaultTrailPlanner(),
+  interestIds: [...activeTheme.value.categoryIds],
+  ...linkedTrack.value.trailPreset,
+  regionKeyword: linkedTrack.value.trailPreset.regionKeyword || primaryRegion.value?.name || "",
 }));
-
-const activeTheme = computed(() => themes.find((item) => item.id === selectedTheme.value) || themes[0]);
-
-const filteredProjects = computed(() => {
-  const categoryIds = activeTheme.value.categoryIds;
-  return projects.value
-    .filter((item) => categoryIds.includes(Number(item.categoryId)))
-    .slice(0, 6);
+const linkedTrailLabel = computed(() => {
+  const transportLabel =
+    linkedPlanner.value.transportMode === "walk"
+      ? "步行"
+      : linkedPlanner.value.transportMode === "car"
+        ? "自驾"
+        : "公共交通";
+  return `${linkedPlanner.value.maxStops} 个点位 / ${transportLabel}`;
 });
+const linkedTrailHint = computed(
+  () =>
+    `建议 ${linkedPlanner.value.durationKey} 内完成，预算 ${linkedPlanner.value.budgetLevel} 档，${linkedPlanner.value.preferHot ? "优先热点项目" : "均衡探索项目"}`
+);
 
-const topRegions = computed(() => regionStats.value.slice(0, 5));
+const buildTrailQuery = (regionName?: string) => {
+  const planner = {
+    ...linkedPlanner.value,
+    regionKeyword: regionName || linkedPlanner.value.regionKeyword,
+  };
+  return {
+    mode: "custom",
+    trail: buildCustomTrailId(planner),
+    interests: planner.interestIds.join(","),
+    duration: planner.durationKey,
+    transport: planner.transportMode,
+    budget: planner.budgetLevel,
+    stops: String(planner.maxStops),
+    hot: planner.preferHot ? "1" : "0",
+    ...(planner.regionKeyword ? { region: planner.regionKeyword } : {}),
+  };
+};
 
-onMounted(async () => {
-  await Promise.all([fetchProjects(), fetchHotProjects(), fetchMapStats()]);
-});
+const applyThemeQuery = (value: unknown) => {
+  if (typeof value !== "string") {
+    return;
+  }
+  if (CURATION_THEMES.some((item) => item.id === value)) {
+    selectedTheme.value = value;
+  }
+};
 
-const fetchProjects = async () => {
-  const res = await request.get("/projects/page", {
-    params: {
-      pageNum: 1,
-      pageSize: 60,
+const syncThemeQuery = async (themeId: string) => {
+  if (route.query.theme === themeId) {
+    return;
+  }
+
+  await router.replace({
+    path: route.path,
+    query: {
+      ...route.query,
+      theme: themeId,
     },
   });
-  if (res.data.code === 200) {
-    projects.value = res.data.data?.records || [];
+};
+
+const handleThemeSelect = async (themeId: string) => {
+  if (selectedTheme.value === themeId) {
+    return;
   }
+
+  selectedTheme.value = themeId;
+  await syncThemeQuery(themeId);
 };
 
-const fetchHotProjects = async () => {
-  const res = await request.get("/view/hot", { params: { limit: 6 } });
-  if (res.data.code === 200) {
-    hotProjects.value = res.data.data || [];
+const goDetail = (id?: number | null) => {
+  if (!Number.isFinite(Number(id)) || Number(id) <= 0) {
+    return;
   }
-};
 
-const fetchMapStats = async () => {
-  const res = await request.get("/statistics/map");
-  if (res.data.code === 200) {
-    regionStats.value = (res.data.data || []).sort((a: any, b: any) => Number(b.value || 0) - Number(a.value || 0));
-  }
-};
-
-const getCategoryName = (id: number) => {
-  const categoryMap: Record<number, string> = {
-    1: "民间文学",
-    2: "传统音乐",
-    3: "传统舞蹈",
-    4: "传统戏剧",
-    5: "曲艺",
-    6: "传统体育、游艺与杂技",
-    7: "传统美术",
-    8: "传统技艺",
-    9: "传统医药",
-    10: "民俗",
-  };
-  return categoryMap[id] || "其他类别";
-};
-
-const summarize = (html: string) => {
-  if (!html) return "暂缺项目简介，可进入详情页查看后续补充内容。";
-  const plain = html.replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
-  return plain.length > 80 ? `${plain.slice(0, 80)}...` : plain;
-};
-
-const goDetail = (id: number) => {
-  router.push(`/home?id=${id}`);
+  router.push({ path: "/home", query: { id } });
 };
 
 const goHome = () => {
   router.push("/home");
 };
+
+const goRegionCategory = () => {
+  router.push("/region-category");
+};
+
+const goLinkedLearningStudio = () => {
+  router.push({ path: "/learning-studio", query: { track: linkedTrack.value.id } });
+};
+
+const goLinkedTrail = () => {
+  router.push({ path: "/heritage-trail", query: buildTrailQuery() });
+};
+
+const goRegionTrail = (regionName: string) => {
+  router.push({ path: "/heritage-trail", query: buildTrailQuery(regionName) });
+};
+
+onMounted(async () => {
+  applyThemeQuery(route.query.theme);
+  try {
+    await load();
+  } catch (error) {
+    console.error("Failed to load curation overview", error);
+    ElMessage.error("主题策展数据加载失败，请稍后重试");
+  }
+});
+
+watch(
+  () => route.query.theme,
+  (value) => {
+    applyThemeQuery(value);
+  }
+);
 </script>
 
 <style scoped>
@@ -267,30 +416,31 @@ const goHome = () => {
     radial-gradient(circle at top left, rgba(196, 30, 58, 0.12), transparent 30%),
     radial-gradient(circle at bottom right, rgba(230, 162, 60, 0.16), transparent 35%),
     #f6f1ea;
-  padding: 8px;
+  padding: 10px 6px 24px;
 }
 
 .hero {
   display: grid;
-  grid-template-columns: 1.35fr 1fr;
-  gap: 24px;
-  margin-bottom: 24px;
+  grid-template-columns: 1.4fr 0.95fr;
+  gap: 18px;
+  margin-bottom: 18px;
 }
 
 .hero-copy,
 .hero-panel,
 .collection-card,
+.action-card,
 .hot-card,
 .region-card {
   background: rgba(255, 255, 255, 0.88);
   border: 1px solid rgba(140, 110, 82, 0.12);
   border-radius: 28px;
-  box-shadow: 0 20px 50px rgba(75, 55, 40, 0.08);
+  box-shadow: var(--heritage-card-shadow-rest);
   backdrop-filter: blur(10px);
 }
 
 .hero-copy {
-  padding: 36px;
+  padding: 32px;
 }
 
 .hero-kicker,
@@ -303,7 +453,10 @@ const goHome = () => {
 }
 
 .hero-copy h1,
-.section-head h2 {
+.section-head h2,
+.item-content h3,
+.integration-item strong,
+.action-item strong {
   margin: 0;
   color: #2f241f;
   font-weight: 700;
@@ -314,17 +467,22 @@ const goHome = () => {
   line-height: 1.08;
 }
 
-.hero-desc {
-  margin: 18px 0 0;
-  line-height: 1.8;
+.hero-desc,
+.theme-description,
+.item-content p,
+.hot-copy span,
+.region-item p,
+.action-item p,
+.integration-item p {
   color: #5c4b43;
-  max-width: 720px;
+  line-height: 1.8;
 }
 
 .hero-actions {
   display: flex;
   gap: 12px;
   margin-top: 28px;
+  flex-wrap: wrap;
 }
 
 .hero-panel {
@@ -333,13 +491,24 @@ const goHome = () => {
   gap: 16px;
 }
 
-.panel-grid {
+.panel-grid,
+.integration-grid,
+.collection-list,
+.hot-list,
+.region-list,
+.action-list,
+.side-column {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
   gap: 16px;
 }
 
-.panel-card {
+.panel-grid {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.panel-card,
+.integration-item,
+.action-item {
   border-radius: 20px;
   padding: 18px;
   background: linear-gradient(135deg, rgba(196, 30, 58, 0.08), rgba(230, 162, 60, 0.06));
@@ -358,7 +527,12 @@ const goHome = () => {
 }
 
 .panel-card p,
-.panel-label {
+.panel-label,
+.item-topline,
+.item-footer,
+.hot-copy span,
+.region-item p,
+.action-item p {
   color: #725d53;
 }
 
@@ -367,9 +541,38 @@ const goHome = () => {
 }
 
 .theme-strip {
-  display: flex;
-  gap: 14px;
+  display: grid;
+  grid-template-columns: minmax(220px, 0.72fr) minmax(0, 1.28fr);
+  gap: 16px;
   margin-bottom: 24px;
+  padding: 18px;
+  background: rgba(255, 255, 255, 0.88);
+  border-radius: 24px;
+  border: 1px solid rgba(140, 110, 82, 0.12);
+  box-shadow: var(--heritage-card-shadow-rest);
+}
+
+.theme-strip-copy {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+
+.theme-strip-copy h2 {
+  margin: 0;
+  color: #2f241f;
+}
+
+.theme-strip-copy p {
+  margin: 0;
+  color: #6c584c;
+  line-height: 1.8;
+}
+
+.theme-chip-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
 }
 
 .theme-chip {
@@ -377,11 +580,11 @@ const goHome = () => {
   background: rgba(255, 255, 255, 0.88);
   border-radius: 18px;
   padding: 14px 18px;
-  min-width: 180px;
+  min-width: 0;
+  min-height: 96px;
   text-align: left;
   cursor: pointer;
   box-shadow: 0 10px 28px rgba(75, 55, 40, 0.06);
-  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
 }
 
 .theme-chip span {
@@ -399,18 +602,18 @@ const goHome = () => {
 
 .theme-chip.active,
 .theme-chip:hover {
-  transform: translateY(-2px);
   box-shadow: 0 14px 30px rgba(196, 30, 58, 0.12);
   background: linear-gradient(135deg, rgba(196, 30, 58, 0.1), rgba(230, 162, 60, 0.08));
 }
 
 .content-grid {
   display: grid;
-  grid-template-columns: 1.45fr 0.9fr;
-  gap: 24px;
+  grid-template-columns: 1.56fr 0.84fr;
+  gap: 18px;
 }
 
 .collection-card,
+.action-card,
 .hot-card,
 .region-card {
   padding: 6px;
@@ -420,21 +623,16 @@ const goHome = () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
 }
 
 .section-head.compact {
   align-items: flex-end;
 }
 
-.theme-description {
+.integration-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   margin: 0 0 20px;
-  color: #5f4e45;
-  line-height: 1.7;
-}
-
-.collection-list {
-  display: grid;
-  gap: 16px;
 }
 
 .collection-item {
@@ -446,12 +644,6 @@ const goHome = () => {
   background: linear-gradient(180deg, #fff, #f9f5f0);
   border: 1px solid rgba(181, 154, 129, 0.18);
   cursor: pointer;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
-}
-
-.collection-item:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 16px 28px rgba(75, 55, 40, 0.08);
 }
 
 .item-cover {
@@ -467,44 +659,35 @@ const goHome = () => {
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
-  color: #806b61;
   font-size: 13px;
 }
 
 .item-content h3 {
   margin: 12px 0 8px;
-  color: #2f241f;
   font-size: 22px;
 }
 
 .item-content p {
   margin: 0 0 14px;
-  color: #5d4f49;
-  line-height: 1.7;
 }
 
-.side-column {
-  display: grid;
-  gap: 24px;
-}
-
-.hot-list,
-.region-list {
-  display: grid;
-  gap: 12px;
+.action-item,
+.hot-item,
+.region-item {
+  width: 100%;
+  border: none;
+  text-align: left;
+  cursor: pointer;
 }
 
 .hot-item {
-  width: 100%;
-  border: 0;
-  background: linear-gradient(180deg, #fff, #f9f3ee);
-  border-radius: 16px;
-  padding: 14px;
   display: grid;
   grid-template-columns: auto 1fr auto;
   align-items: center;
   gap: 12px;
-  cursor: pointer;
+  border-radius: 16px;
+  padding: 14px;
+  background: linear-gradient(180deg, #fff, #f9f3ee);
   color: inherit;
 }
 
@@ -522,16 +705,9 @@ const goHome = () => {
 }
 
 .hot-copy strong,
-.region-item strong {
+.region-item strong,
+.action-item strong {
   color: #2f241f;
-}
-
-.hot-copy span,
-.region-item p {
-  display: block;
-  margin-top: 4px;
-  color: #7c6860;
-  font-size: 13px;
 }
 
 .region-item {
@@ -545,7 +721,13 @@ const goHome = () => {
 
 @media (max-width: 1100px) {
   .hero,
-  .content-grid {
+  .content-grid,
+  .theme-strip {
+    grid-template-columns: 1fr;
+  }
+
+  .theme-chip-grid,
+  .integration-grid {
     grid-template-columns: 1fr;
   }
 }
@@ -559,15 +741,7 @@ const goHome = () => {
     font-size: 32px;
   }
 
-  .theme-strip {
-    overflow-x: auto;
-    padding-bottom: 6px;
-  }
-
-  .collection-item {
-    grid-template-columns: 1fr;
-  }
-
+  .collection-item,
   .panel-grid {
     grid-template-columns: 1fr;
   }

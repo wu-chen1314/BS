@@ -1,5 +1,5 @@
 <template>
-  <div class="chat-container" v-if="showAssistant">
+  <div v-if="showAssistant" class="chat-container">
     <el-button class="chat-fab" type="primary" circle size="large" @click="toggleChat">
       <el-icon size="24"><Service /></el-icon>
     </el-button>
@@ -13,7 +13,7 @@
               非遗智能助手
             </span>
             <div class="header-actions">
-              <el-tooltip content="清空记录">
+              <el-tooltip content="开始新对话">
                 <el-icon class="action-icon" @click="clearHistory"><Delete /></el-icon>
               </el-tooltip>
               <el-icon class="action-icon" @click="isOpen = false"><Close /></el-icon>
@@ -21,22 +21,34 @@
           </div>
         </template>
 
-        <div class="message-list" ref="messageListRef">
+        <div ref="messageListRef" class="message-list">
           <div
-            v-for="(msg, index) in messages"
-            :key="index"
+            v-for="msg in displayMessages"
+            :key="msg.id"
             class="message-item"
-            :class="msg.role === 'user' ? 'message-user' : 'message-ai'"
+            :class="
+              msg.role === 'user'
+                ? 'message-user'
+                : msg.role === 'system'
+                  ? 'message-system'
+                  : 'message-ai'
+            "
           >
-            <el-avatar :size="30" :src="msg.role === 'user' ? getUserAvatar : aiAvatar" class="msg-avatar" />
+            <el-avatar
+              :size="30"
+              :src="msg.role === 'user' ? userAvatar : aiAvatar"
+              class="msg-avatar"
+            />
 
             <div class="msg-bubble">
-              <div v-if="msg.role === 'ai'" class="ai-name">非遗小助手</div>
-              <div class="msg-content" v-html="formatContent(msg.content)"></div>
+              <div v-if="msg.role !== 'user'" class="ai-name">
+                {{ msg.role === "system" ? "系统提醒" : "非遗小助手" }}
+              </div>
+              <div class="msg-content" v-html="renderContent(msg.content)"></div>
             </div>
           </div>
 
-          <div v-if="isLoading" class="message-item message-ai">
+          <div v-if="isThinking" class="message-item message-ai">
             <el-avatar :size="30" :src="aiAvatar" class="msg-avatar" />
             <div class="msg-bubble">
               <div class="typing-indicator"><span></span><span></span><span></span></div>
@@ -51,9 +63,10 @@
             :rows="2"
             placeholder="请输入你的问题，Enter 发送，Shift + Enter 换行"
             resize="none"
+            :disabled="isBusy"
             @keydown.enter.prevent="handleEnter"
           />
-          <el-button type="primary" size="small" class="send-btn" @click="sendMessage" :loading="isLoading">
+          <el-button class="send-btn" type="primary" size="small" :loading="isBusy" @click="sendMessage">
             发送
           </el-button>
         </div>
@@ -63,40 +76,53 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref } from "vue";
+import MarkdownIt from "markdown-it";
+import { storeToRefs } from "pinia";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { ChatDotRound, Close, Delete, Service } from "@element-plus/icons-vue";
-import request from "@/utils/request";
+import { ElMessage } from "element-plus";
+import { MATERIAL_PLACEHOLDERS } from "@/constants/materials";
+import { useChatWorkspaceStore } from "@/stores/chatWorkspace";
+import type { ChatMessage } from "@/types/chat";
+import { getCurrentUser, SESSION_CHANGED_EVENT, type SessionUser } from "@/utils/session";
 import { buildStaticUrl } from "@/utils/url";
 
+const markdown = new MarkdownIt({
+  html: false,
+  breaks: true,
+  linkify: true,
+});
+
+const aiAvatar = MATERIAL_PLACEHOLDERS.aiAssistant;
+
+const welcomeMessage: ChatMessage = {
+  id: 0,
+  role: "assistant",
+  content:
+    "你好，我是非遗智能助手。你可以问我项目背景、历史故事、代表技艺，或让我推荐值得继续浏览的非遗内容。",
+  timestamp: new Date(0).toISOString(),
+};
+
 const route = useRoute();
+const chatStore = useChatWorkspaceStore();
+const { isBusy, isThinking, messages } = storeToRefs(chatStore);
+
 const isOpen = ref(false);
 const inputContent = ref("");
-const isLoading = ref(false);
 const messageListRef = ref<HTMLElement | null>(null);
-const aiAvatar = "https://cdn-icons-png.flaticon.com/512/4712/4712027.png";
+const currentUser = ref<SessionUser | null>(getCurrentUser());
 
 const showAssistant = computed(() => route.path !== "/login");
+const displayMessages = computed(() => (messages.value.length > 0 ? messages.value : [welcomeMessage]));
+const userAvatar = computed(
+  () => buildStaticUrl(currentUser.value?.avatarUrl) || MATERIAL_PLACEHOLDERS.avatar
+);
 
-const userInfo = computed(() => {
-  const userStr = sessionStorage.getItem("user");
-  return userStr ? JSON.parse(userStr) : {};
-});
-
-const getUserAvatar = computed(() => {
-  return (
-    buildStaticUrl(userInfo.value.avatarUrl) ||
-    "https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png"
-  );
-});
-
-interface ChatMessage {
-  role: "user" | "ai";
-  content: string;
-}
-
-const welcomeText = "你好，我是非遗智能助手。你可以问我项目背景、历史故事、代表技艺，或让我要点式推荐适合浏览的非遗内容。";
-const messages = ref<ChatMessage[]>([{ role: "ai", content: welcomeText }]);
+const refreshCurrentUser = () => {
+  currentUser.value = getCurrentUser();
+  chatStore.syncSessionScope();
+};
 
 const toggleChat = () => {
   isOpen.value = !isOpen.value;
@@ -106,7 +132,9 @@ const toggleChat = () => {
 };
 
 const clearHistory = () => {
-  messages.value = [{ role: "ai", content: "聊天记录已清空。你想继续了解哪一项非遗内容？" }];
+  chatStore.resetActiveConversation();
+  inputContent.value = "";
+  scrollToBottom();
 };
 
 const handleEnter = (event: KeyboardEvent) => {
@@ -117,31 +145,21 @@ const handleEnter = (event: KeyboardEvent) => {
 
 const sendMessage = async () => {
   const text = inputContent.value.trim();
-  if (!text) return;
+  if (!text || isBusy.value) {
+    return;
+  }
 
-  messages.value.push({ role: "user", content: text });
   inputContent.value = "";
   scrollToBottom();
-  isLoading.value = true;
 
   try {
-    const res = await request.post("/chat/send", {
-      message: text,
-    });
-
-    let aiReply = "";
-    if (res.data.code === 200 && res.data.data) {
-      aiReply = res.data.data.reply || JSON.stringify(res.data.data);
-    } else {
-      aiReply = res.data.msg || "抱歉，我暂时无法回答这个问题。";
-    }
-
-    messages.value.push({ role: "ai", content: aiReply });
+    await chatStore.sendMessage(text);
   } catch (error) {
     console.error("AI assistant error", error);
-    messages.value.push({ role: "ai", content: "抱歉，当前网络或模型服务暂不可用，请稍后重试。" });
+    const message =
+      error instanceof Error && error.message ? error.message : "当前网络或模型服务暂时不可用，请稍后重试。";
+    ElMessage.error(message);
   } finally {
-    isLoading.value = false;
     scrollToBottom();
   }
 };
@@ -154,7 +172,31 @@ const scrollToBottom = () => {
   });
 };
 
-const formatContent = (text: string) => text.replace(/\n/g, "<br/>");
+const renderContent = (text: string) => markdown.render(text || "");
+
+watch(
+  () => [displayMessages.value.length, isOpen.value, isThinking.value],
+  ([, open]) => {
+    if (open) {
+      scrollToBottom();
+    }
+  }
+);
+
+watch(showAssistant, (visible) => {
+  if (!visible) {
+    isOpen.value = false;
+  }
+});
+
+onMounted(() => {
+  refreshCurrentUser();
+  window.addEventListener(SESSION_CHANGED_EVENT, refreshCurrentUser);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener(SESSION_CHANGED_EVENT, refreshCurrentUser);
+});
 </script>
 
 <style scoped>
@@ -163,7 +205,7 @@ const formatContent = (text: string) => text.replace(/\n/g, "<br/>");
   bottom: 30px;
   right: 30px;
   z-index: 2000;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 4px 12px var(--heritage-shadow);
   transition: transform 0.3s;
 }
 
@@ -188,7 +230,7 @@ const formatContent = (text: string) => text.replace(/\n/g, "<br/>");
   justify-content: space-between;
   align-items: center;
   font-size: 16px;
-  color: #333;
+  color: var(--heritage-ink);
 }
 
 .chat-title {
@@ -205,19 +247,19 @@ const formatContent = (text: string) => text.replace(/\n/g, "<br/>");
 
 .action-icon {
   cursor: pointer;
-  color: #999;
+  color: var(--heritage-muted);
   transition: color 0.3s;
 }
 
 .action-icon:hover {
-  color: #409eff;
+  color: var(--heritage-primary);
 }
 
 .message-list {
   flex: 1;
   overflow-y: auto;
   padding: 15px;
-  background-color: #f5f7fa;
+  background-color: var(--heritage-paper-soft);
   display: flex;
   flex-direction: column;
   gap: 15px;
@@ -244,19 +286,35 @@ const formatContent = (text: string) => text.replace(/\n/g, "<br/>");
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
-.message-ai {
+.msg-content :deep(p) {
+  margin: 0 0 8px;
+}
+
+.msg-content :deep(p:last-child) {
+  margin-bottom: 0;
+}
+
+.message-ai,
+.message-system {
   align-self: flex-start;
 }
 
 .message-ai .msg-bubble {
-  background-color: #fff;
-  color: #333;
+  background-color: var(--heritage-surface);
+  color: var(--heritage-ink);
+  border-top-left-radius: 0;
+}
+
+.message-system .msg-bubble {
+  background: rgba(164, 59, 47, 0.08);
+  border: 1px solid rgba(164, 59, 47, 0.16);
+  color: var(--heritage-primary);
   border-top-left-radius: 0;
 }
 
 .ai-name {
   font-size: 12px;
-  color: #999;
+  color: var(--heritage-muted);
   margin-bottom: 4px;
 }
 
@@ -266,15 +324,15 @@ const formatContent = (text: string) => text.replace(/\n/g, "<br/>");
 }
 
 .message-user .msg-bubble {
-  background-color: #409eff;
-  color: #fff;
+  background: linear-gradient(135deg, var(--heritage-primary), #be6951);
+  color: var(--heritage-paper-soft);
   border-top-right-radius: 0;
 }
 
 .chat-input-area {
   padding: 10px;
-  border-top: 1px solid #ebeef5;
-  background: #fff;
+  border-top: 1px solid var(--heritage-border);
+  background: var(--heritage-surface);
   position: relative;
 }
 
@@ -288,14 +346,19 @@ const formatContent = (text: string) => text.replace(/\n/g, "<br/>");
   display: inline-block;
   width: 6px;
   height: 6px;
-  background-color: #ccc;
+  background-color: var(--heritage-gold);
   border-radius: 50%;
   animation: typing 1.4s infinite ease-in-out both;
   margin: 0 2px;
 }
 
-.typing-indicator span:nth-child(1) { animation-delay: -0.32s; }
-.typing-indicator span:nth-child(2) { animation-delay: -0.16s; }
+.typing-indicator span:nth-child(1) {
+  animation-delay: -0.32s;
+}
+
+.typing-indicator span:nth-child(2) {
+  animation-delay: -0.16s;
+}
 
 @keyframes typing {
   0%,
@@ -314,7 +377,7 @@ const formatContent = (text: string) => text.replace(/\n/g, "<br/>");
 }
 
 .message-list::-webkit-scrollbar-thumb {
-  background: #dcdfe6;
+  background: rgba(164, 59, 47, 0.22);
   border-radius: 3px;
 }
 </style>

@@ -9,4 +9,6 @@ public interface IchProjectViewService extends IService<IchProjectView> {
     Long increaseViewCount(Long projectId);
 
     List<IchProjectView> getHotRanking(int limit);
+
+    Long getCurrentViewCount(Long projectId);
 }

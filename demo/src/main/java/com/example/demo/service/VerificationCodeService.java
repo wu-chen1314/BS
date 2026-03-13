@@ -65,7 +65,7 @@ public class VerificationCodeService {
             return Result.error("邮箱格式不正确");
         }
         if (!isMailConfigured()) {
-            return Result.error("Mail service is not configured");
+            return Result.error("邮件服务未配置，请先设置 MAIL_USERNAME 和 MAIL_PASSWORD");
         }
 
         cleanupExpiredCodes();
@@ -84,7 +84,7 @@ public class VerificationCodeService {
             message.setText("您的验证码为：" + code + "，5 分钟内有效。如非本人操作，请忽略此邮件。");
             mailSender.send(message);
         } catch (Exception exception) {
-            return Result.error("Failed to send verification code");
+            return Result.error("邮件发送失败，请检查邮件配置后重试");
         }
 
         LocalDateTime now = LocalDateTime.now();

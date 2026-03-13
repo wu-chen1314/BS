@@ -13,10 +13,13 @@ import com.example.demo.mapper.IchRegionMapper;
 import com.example.demo.service.IchInheritorService;
 import com.example.demo.service.IchProjectService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import com.example.demo.vo.RegionCategoryVO;
+import com.example.demo.vo.StatisticsVO;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -46,17 +49,19 @@ public class RegionCategoryController {
     private IchRegionMapper regionMapper;
 
     @GetMapping("/all")
-    public Result<Map<String, Object>> getAllData() {
-        Map<String, Object> result = new HashMap<>();
-        result.put("provinces", regionMapper.selectList(
+    @Cacheable(value = "regionCategory", key = "'allData'")
+    public Result<RegionCategoryVO> getAllData() {
+        RegionCategoryVO result = new RegionCategoryVO();
+        result.setProvinces(regionMapper.selectList(
                 new LambdaQueryWrapper<IchRegion>().eq(IchRegion::getLevel, 1).orderByAsc(IchRegion::getId)));
-        result.put("categoryTree", buildCategoryTree(loadAllCategories()));
-        result.put("regionStatistics", buildRegionStatistics(null));
-        result.put("categoryStatistics", buildCategoryStatistics(null));
+        result.setCategoryTree(buildCategoryTree(loadAllCategories()));
+        result.setRegionStatistics(buildRegionStatistics(null));
+        result.setCategoryStatistics(buildCategoryStatistics(null));
         return Result.success(result);
     }
 
     @GetMapping("/cities")
+    @Cacheable(value = "regionCategory", key = "'cities_' + #provinceId")
     public Result<List<IchRegion>> getCities(@RequestParam Long provinceId) {
         List<IchRegion> cities = regionMapper.selectList(new LambdaQueryWrapper<IchRegion>()
                 .eq(IchRegion::getParentId, provinceId)
@@ -82,16 +87,18 @@ public class RegionCategoryController {
     }
 
     @GetMapping("/statistics/by-region")
-    public Result<Map<String, Object>> getRegionStatistics(@RequestParam(required = false) Long regionId) {
+    @Cacheable(value = "regionStatistics", key = "#regionId != null ? #regionId : 'all'")
+    public Result<StatisticsVO> getRegionStatistics(@RequestParam(required = false) Long regionId) {
         return Result.success(buildRegionStatistics(regionId));
     }
-
+    
     @GetMapping("/statistics/by-category")
-    public Result<Map<String, Object>> getCategoryStatistics(@RequestParam(required = false) Long categoryId) {
+    @Cacheable(value = "categoryStatistics", key = "#categoryId != null ? #categoryId : 'all'")
+    public Result<StatisticsVO> getCategoryStatistics(@RequestParam(required = false) Long categoryId) {
         return Result.success(buildCategoryStatistics(categoryId));
     }
 
-    private Map<String, Object> buildRegionStatistics(Long regionId) {
+    private StatisticsVO buildRegionStatistics(Long regionId) {
         QueryWrapper<IchProject> query = new QueryWrapper<>();
         query.select("id", "category_id");
         applyRegionFilter(query, regionId);
@@ -100,14 +107,14 @@ public class RegionCategoryController {
         List<Long> projectIds = projects.stream().map(IchProject::getId).filter(Objects::nonNull).collect(Collectors.toList());
         Set<Long> categoryIds = projects.stream().map(IchProject::getCategoryId).filter(Objects::nonNull).collect(Collectors.toSet());
 
-        Map<String, Object> result = new HashMap<>();
-        result.put("totalProjects", projects.size());
-        result.put("categoryCount", categoryIds.size());
-        result.put("inheritorCount", countInheritors(projectIds));
+        StatisticsVO result = new StatisticsVO();
+        result.setTotalProjects(projects.size());
+        result.setCategoryCount(categoryIds.size());
+        result.setInheritorCount(countInheritors(projectIds));
         return result;
     }
 
-    private Map<String, Object> buildCategoryStatistics(Long categoryId) {
+    private StatisticsVO buildCategoryStatistics(Long categoryId) {
         QueryWrapper<IchProject> query = new QueryWrapper<>();
         query.select("id", "region_id");
         applyCategoryFilter(query, categoryId);
@@ -116,10 +123,10 @@ public class RegionCategoryController {
         List<Long> projectIds = projects.stream().map(IchProject::getId).filter(Objects::nonNull).collect(Collectors.toList());
         Set<Long> regionIds = projects.stream().map(IchProject::getRegionId).filter(Objects::nonNull).collect(Collectors.toSet());
 
-        Map<String, Object> result = new HashMap<>();
-        result.put("totalProjects", projects.size());
-        result.put("regionCount", regionIds.size());
-        result.put("inheritorCount", countInheritors(projectIds));
+        StatisticsVO result = new StatisticsVO();
+        result.setTotalProjects(projects.size());
+        result.setRegionCount(regionIds.size());
+        result.setInheritorCount(countInheritors(projectIds));
         return result;
     }
 

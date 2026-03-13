@@ -1,18 +1,19 @@
 package com.example.demo.controller;
 
 import com.example.demo.common.Result;
+import com.example.demo.util.RequestAuthUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.web.bind.annotation.*;
 
+import javax.servlet.http.HttpServletRequest;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 /**
- * ✨ 新功能2：搜索历史记录
- * 利用 Redis List（LPUSH + LTRIM）实现最近 10 条搜索词记录
- * POST /api/search/record — 记录搜索词
- * GET /api/search/history?userId=1 — 获取最近搜索历史
- * DELETE /api/search/history?userId=1 — 清除搜索历史
+ * 搜索历史接口。
+ * 使用 Redis List（LPUSH + LTRIM）保存最近 10 条搜索记录。
  */
 @RestController
 @RequestMapping("/api/search")
@@ -21,66 +22,82 @@ public class SearchHistoryController {
     @Autowired(required = false)
     private StringRedisTemplate stringRedisTemplate;
 
+    @Autowired
+    private RequestAuthUtil requestAuthUtil;
+
     private static final String SEARCH_HISTORY_PREFIX = "ICH:SEARCH:HISTORY:";
     private static final int MAX_HISTORY_SIZE = 10;
 
     /**
-     * 记录用户搜索词
+     * 记录当前登录用户的搜索词。
      * POST /api/search/record
-     * body: { "userId": 1, "keyword": "昆曲" }
+     * body: { "keyword": "昆曲" }
      */
     @PostMapping("/record")
-    public Result<Boolean> record(@RequestBody java.util.Map<String, Object> params) {
-        Object userIdObj = params.get("userId");
-        String keyword = (String) params.get("keyword");
-        if (userIdObj == null || keyword == null || keyword.trim().isEmpty()) {
+    public Result<Boolean> record(@RequestBody Map<String, Object> params, HttpServletRequest request) {
+        Long currentUserId = requestAuthUtil.getCurrentUserId(request);
+        String keyword = params.get("keyword") == null ? null : params.get("keyword").toString();
+        if (currentUserId == null) {
+            return Result.error("用户未登录或令牌无效");
+        }
+        if (keyword == null || keyword.trim().isEmpty()) {
             return Result.error("参数不完整");
         }
-        String key = SEARCH_HISTORY_PREFIX + userIdObj;
+
+        String key = SEARCH_HISTORY_PREFIX + currentUserId;
         if (stringRedisTemplate == null) {
-            // 未配置 Redis 时直接返回成功，不影响主流程
             return Result.success(true);
         }
+
         try {
-            // LPUSH 将新关键词压入列表头部（最新的在前）
             stringRedisTemplate.opsForList().leftPush(key, keyword.trim());
-            // LTRIM 只保留最近 MAX_HISTORY_SIZE 条，自动淘汰旧记录
             stringRedisTemplate.opsForList().trim(key, 0, MAX_HISTORY_SIZE - 1);
             return Result.success(true);
         } catch (Exception ignored) {
-            // Redis 不可用时忽略错误
             return Result.success(true);
         }
     }
 
     /**
-     * 获取用户最近的搜索历史（最多 10 条）
-     * GET /api/search/history?userId=1
+     * 获取当前登录用户最近的搜索历史。
+     * GET /api/search/history
      */
     @GetMapping("/history")
-    public Result<List<String>> history(@RequestParam Long userId) {
-        String key = SEARCH_HISTORY_PREFIX + userId;
-        if (stringRedisTemplate == null) {
-            return Result.success(java.util.Collections.emptyList());
+    public Result<List<String>> history(HttpServletRequest request) {
+        Long currentUserId = requestAuthUtil.getCurrentUserId(request);
+        if (currentUserId == null) {
+            return Result.error("用户未登录或令牌无效");
         }
+
+        String key = SEARCH_HISTORY_PREFIX + currentUserId;
+        if (stringRedisTemplate == null) {
+            return Result.success(Collections.emptyList());
+        }
+
         try {
             List<String> list = stringRedisTemplate.opsForList().range(key, 0, MAX_HISTORY_SIZE - 1);
             return Result.success(list);
         } catch (Exception ignored) {
-            return Result.success(java.util.Collections.emptyList());
+            return Result.success(Collections.emptyList());
         }
     }
 
     /**
-     * 清除用户搜索历史
-     * DELETE /api/search/history?userId=1
+     * 清除当前登录用户的搜索历史。
+     * DELETE /api/search/history
      */
     @DeleteMapping("/history")
-    public Result<Boolean> clearHistory(@RequestParam Long userId) {
-        String key = SEARCH_HISTORY_PREFIX + userId;
+    public Result<Boolean> clearHistory(HttpServletRequest request) {
+        Long currentUserId = requestAuthUtil.getCurrentUserId(request);
+        if (currentUserId == null) {
+            return Result.error("用户未登录或令牌无效");
+        }
+
+        String key = SEARCH_HISTORY_PREFIX + currentUserId;
         if (stringRedisTemplate == null) {
             return Result.success(true);
         }
+
         try {
             stringRedisTemplate.delete(key);
             return Result.success(true);

@@ -98,6 +98,10 @@ public class LoginController {
             return Result.error(String.format("用户名不存在，剩余尝试次数：%d", remaining));
         }
 
+        if (user.getStatus() != null && user.getStatus() == 0) {
+            return Result.error("用户已被禁用");
+        }
+
         String inputPwd = loginForm.getPassword();
         if (!PasswordUtil.matches(inputPwd, user.getPasswordHash())) {
             // 密码错误，增加失败次数
